@@ -55,17 +55,40 @@ compiler details and private FPM request evidence are under `artifacts/`.
   orientation. Margins use CSS shorthand (top, right, bottom, left) with one to
   four nonnegative lengths in pt, mm, cm, in, px or pc. Unitless zero is valid.
   A stylesheet's `@page` rules can change the initial page settings.
-- `loadHtml(string $html, ?string $baseUrl = null, string $css = ""): void`
-  loads UTF-8 HTML and optional additional CSS. Calling it again replaces the
-  document content. Ordinary imperfect markup follows the renderer's HTML parser.
+- `loadHtml(string $html, ?string $baseUrl = null, string $css = "", ?string $documentRoot = null): void`
+  loads UTF-8 HTML and an optional override stylesheet. Calling it again replaces
+  the document content. Ordinary imperfect markup follows the renderer's HTML parser.
+  `$baseUrl` and `$documentRoot` select local asset directories, as described in
+  [Assets and fonts](#assets-and-fonts).
+  PlutoBook ranks `$css` above the document's own styles. Its normal declarations
+  override `<style>` elements, linked stylesheets and inline `style` attributes,
+  whatever their specificity. Document `!important` declarations still beat normal
+  `$css` declarations. Mark a `$css` declaration `!important` to override those as
+  well. This differs from the CSS specification's user stylesheet rules, so
+  `tests/unit/css-precedence.phpt` pins the PlutoBook 0.20.0 behavior.
 - `toPdf(): string`, `writeToStream($stream): void`, and `writeToFile(string $path): void`
   render through native PDF write callbacks. Stream output starts at the current
   position. The caller retains the stream and handles final flushing or closing.
   The destination is borrowed exclusively while writing. File output uses normal
-  create/truncate semantics. An I/O failure can leave partial output.
+  create/truncate semantics, like gd, Imagick and `DOMDocument::save()`. An I/O
+  failure or time limit can leave partial output. To replace a file only after a
+  complete render, write to a temporary path in the same directory and `rename()` it.
+- Rendering CPU time counts toward `max_execution_time`. PHP cannot interrupt native
+  code, so the binding checks the time limit whenever the renderer fetches an asset
+  or writes output. Once the limit passes, it stops rendering and raises PHP's
+  normal `Maximum execution time` fatal error, and shutdown functions still run.
+  Layout before the first output byte cannot be interrupted. If layout outlasts the
+  limit plus `hard_timeout`, PHP terminates the process. Raise `set_time_limit()`
+  for very large documents, or render them in a queue worker.
+- `getResourceErrors(): array` lists the resources skipped by the most recent
+  `loadHtml()` and any rendering since, as `['url' => string, 'reason' => string]`
+  entries. See [Assets and fonts](#assets-and-fonts) for the reasons.
 - Invalid options raise `ValueError` or `TypeError`. Rendering and output failures
-  raise `PlutoBook\Exception`, a `RuntimeException`. Exceptions from a PHP stream
-  wrapper propagate to the caller. Documents support neither cloning nor serialization.
+  raise `PlutoBook\Exception`, a `RuntimeException`. Its message names the cause
+  when the binding or renderer knows it, for example
+  `Unable to write the PDF output: the destination stream did not accept the data`.
+  Exceptions from a PHP stream wrapper propagate to the caller.
+  Documents support neither cloning nor serialization.
 
 ### Assets and fonts
 
@@ -82,12 +105,73 @@ $baseUrl = 'file://' . implode('/', array_map('rawurlencode', explode('/', $asse
 $document->loadHtml('<img src="logo.svg"><p>Statement</p>', baseUrl: $baseUrl);
 ```
 
-The asset loader confines regular files to the selected tree, checks PHP's
-`open_basedir`, and verifies Linux file descriptors through `/proc/self/fd`
-before reading. Network requests are disabled. Missing or denied resources can
-be omitted while surrounding content renders. PlutoBook can log these omissions
-to stderr. The renderer also uses Fontconfig for installed fonts. The fixture
-scripts select a private Fontconfig file for repeatable output.
+With only `baseUrl`, `file:` URLs are filesystem paths, so `/assets/logo.svg`
+means `/assets/logo.svg` on the server and is refused. Templates written for a
+website usually use such root-relative URLs. For those, pass the site's public
+directory as `documentRoot`, again a `file:///` URI ending in `/`. That directory
+then acts as `/`, as on a web server. `baseUrl` becomes optional and must point to
+a directory inside it. It defaults to the document root and determines what
+relative URLs such as `logo.svg` resolve against.
+
+```php
+$document->loadHtml(
+    '<img src="/assets/logo.svg"><img src="stamp.png">',
+    baseUrl: 'file:///srv/shop/public/invoices/',  // stamp.png -> public/invoices/stamp.png
+    documentRoot: 'file:///srv/shop/public/',      // /assets/… -> public/assets/…
+);
+```
+
+In this mode every `file:` URL in the document is relative to the document root,
+including absolute ones such as `file:///srv/shop/…`. `..` cannot climb above it.
+The same template therefore resolves the same way whether it is rendered from
+these local files or from the live site. `getResourceErrors()` reports the URLs as
+the document saw them, for example `file:///assets/missing.png`.
+
+The asset loader confines regular files to the selected tree and checks PHP's
+`open_basedir`. Symlinks inside the tree work, while those leading out of it are
+refused. After those checks it reopens the resolved path one component at a time
+without following symlinks, so a path swapped for a symlink in the meantime is
+refused. It does not need `/proc`, so it also works in an FPM `chroot`. Devices,
+FIFOs and sockets are inspected but never opened for reading. Network requests
+are disabled. Missing or denied resources are
+omitted while surrounding content renders. The renderer also uses Fontconfig for
+installed fonts. The fixture scripts select a private Fontconfig file for
+repeatable output.
+
+Each skipped resource appears once in `getResourceErrors()` with one of these
+reasons. Fonts and background images can be fetched during rendering, so check
+the list after `toPdf()` or a write method. To make missing assets fatal, throw
+when the list is not empty.
+
+| Reason | Meaning |
+| --- | --- |
+| `network-disabled` | An `http:` or `https:` URL. Network requests are disabled. |
+| `unsupported-scheme` | Any other non-`file:` URL. |
+| `no-base-url` | A local file without a `baseUrl` or `documentRoot` directory. |
+| `invalid-url` | A malformed `file:` URL, such as one with an encoded NUL byte. |
+| `missing` | The file does not exist. |
+| `open-basedir` | PHP's `open_basedir` blocks the file. |
+| `outside-base` | The resolved file lies outside the `documentRoot`, or the `baseUrl` directory without one. |
+| `verification-failed` | A directory or the file changed between the checks and the read. |
+| `not-regular-file` | A directory, FIFO, socket or device. |
+| `empty` | A zero-byte file. |
+| `too-large` | The file exceeds `plutobook.max_asset_size`. |
+| `permission-denied` | The PHP process cannot read the file. |
+| `read-error` | Reading or handing the file to the renderer failed. |
+
+PlutoBook 0.20.0 also prints one `WARNING:` line per skipped resource to the
+process's stderr. The binding cannot suppress that output. The line names the
+reason and URL, for example
+`WARNING: Asset skipped, outside the asset directory: file:///…`.
+
+Asset bytes are native allocations outside `memory_limit`. The
+`plutobook.max_asset_size` setting caps each local file. It defaults to `32M`,
+accepts PHP size shorthand (`K`, `M`, `G`) and can be changed with `ini_set()`.
+Larger files are skipped like missing resources. `0` removes the binding's cap.
+Values must stay at or below 2147483647 bytes, the renderer's own limit, so `2G`
+is rejected. Invalid values raise a warning and keep the previous setting.
+The current value applies to every fetch, including fonts and images that
+PlutoBook loads while it renders.
 
 ## Verification and distribution
 

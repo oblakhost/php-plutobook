@@ -38,7 +38,7 @@ foreach (['zero', 'throw', 'reload', 'partial'] as $mode) {
 fclose($s);
 ?>
 --EXPECT--
-Unable to write the PDF output
+Unable to write the PDF output: the destination stream did not accept the data
 sink error
 The document is already rendering
 %PDF- %%EOF

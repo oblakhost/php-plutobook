@@ -18,8 +18,33 @@
 #error "This release supports NTS PHP builds only"
 #endif
 
+ZEND_DECLARE_MODULE_GLOBALS(plutobook)
+
 static zend_class_entry *php_plutobook_exception;
 static zend_object_handlers php_plutobook_handlers;
+
+// Reject malformed sizes. PHP's legacy fallback of 0 would silently remove the cap.
+static ZEND_INI_MH(php_plutobook_update_max_asset_size)
+{
+	zend_string *error = NULL;
+	zend_long bytes = zend_ini_parse_quantity(new_value, &error);
+	bool invalid = error != NULL;
+	if (error) {
+		zend_string_release(error);
+	}
+	if (invalid || bytes < 0 || bytes > INT_MAX || !strpbrk(ZSTR_VAL(new_value), "0123456789")) {
+		zend_error(E_WARNING,
+		           "Invalid \"%s\" setting. Expected 0 or a byte size up to %d, such as 32M",
+		           ZSTR_VAL(entry->name), INT_MAX);
+		return FAILURE;
+	}
+	PLUTOBOOK_G(max_asset_size) = bytes;
+	return SUCCESS;
+}
+
+PHP_INI_BEGIN()
+PHP_INI_ENTRY("plutobook.max_asset_size", "32M", PHP_INI_ALL, php_plutobook_update_max_asset_size)
+PHP_INI_END()
 
 static php_plutobook_document *php_plutobook_document_from(zend_object *object)
 {
@@ -45,6 +70,9 @@ static void php_plutobook_free_object(zend_object *object)
 		close(doc->asset_dir);
 		zend_string_release(doc->asset_root);
 	}
+	if (doc->resource_errors) {
+		zend_array_destroy(doc->resource_errors);
+	}
 	zend_object_std_dtor(object);
 }
 
@@ -53,6 +81,27 @@ static void php_plutobook_fail(const char *message)
 	if (!EG(exception)) {
 		zend_throw_exception(php_plutobook_exception, message, 0);
 	}
+}
+
+static void php_plutobook_fail_because(const char *message, const char *detail)
+{
+	if (!detail || !*detail) {
+		php_plutobook_fail(message);
+	} else if (!EG(exception)) {
+		zend_throw_exception_ex(php_plutobook_exception, 0, "%s: %s", message, detail);
+	}
+}
+
+// The renderer's last message, unless it is empty or a skipped-asset notice from the fetcher.
+// Those are reported by getResourceErrors() and would misattribute an unrelated failure.
+static const char *php_plutobook_renderer_detail(void)
+{
+	const char *message = plutobook_get_error_message();
+	if (!message ||
+	    !strncmp(message, PHP_PLUTOBOOK_ASSET_SKIPPED, sizeof(PHP_PLUTOBOOK_ASSET_SKIPPED) - 1)) {
+		return NULL;
+	}
+	return message;
 }
 
 static bool php_plutobook_ready(php_plutobook_document *doc, bool needs_content)
@@ -98,12 +147,13 @@ PHP_METHOD(PlutoBook_Document, __construct)
 
 PHP_METHOD(PlutoBook_Document, loadHtml)
 {
-	zend_string *html, *base = NULL, *css = NULL;
-	ZEND_PARSE_PARAMETERS_START(1, 3)
+	zend_string *html, *base = NULL, *css = NULL, *document_root = NULL;
+	ZEND_PARSE_PARAMETERS_START(1, 4)
 	Z_PARAM_STR(html)
 	Z_PARAM_OPTIONAL
 	Z_PARAM_STR_OR_NULL(base)
 	Z_PARAM_STR(css)
+	Z_PARAM_STR_OR_NULL(document_root)
 	ZEND_PARSE_PARAMETERS_END();
 
 	php_plutobook_document *doc = php_plutobook_document_from(Z_OBJ_P(ZEND_THIS));
@@ -118,9 +168,22 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 		zend_argument_value_error(1, "exceeds the renderer's maximum HTML length");
 		RETURN_THROWS();
 	}
+	// The asset root confines file reads. With documentRoot it is also the virtual URL root,
+	// and PlutoBook resolves URLs against the base directory's path below it.
 	int directory = -1;
-	zend_string *root = base ? php_plutobook_asset_root(base, &directory) : NULL;
-	if (base && !root) {
+	zend_string *root = NULL, *virtual_base = NULL;
+	if (document_root) {
+		root = php_plutobook_asset_root(document_root, &directory, 4);
+		virtual_base = root ? php_plutobook_virtual_base(root, base) : NULL;
+		if (root && !virtual_base) {
+			close(directory);
+			zend_string_release(root);
+			root = NULL;
+		}
+	} else if (base) {
+		root = php_plutobook_asset_root(base, &directory, 2);
+	}
+	if ((base || document_root) && !root) {
 		RETURN_THROWS();
 	}
 	if (doc->asset_root) {
@@ -129,49 +192,76 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 	}
 	doc->asset_root = root;
 	doc->asset_dir = directory;
+	doc->virtual_root = virtual_base != NULL;
+	if (doc->resource_errors) {
+		zend_hash_clean(doc->resource_errors);
+	}
+	const char *base_url = virtual_base ? ZSTR_VAL(virtual_base)
+	                       : base       ? ZSTR_VAL(base)
+	                                    : "file:///";
 	doc->busy = true;
 	plutobook_clear_error_message();
-	doc->loaded =
-	    plutobook_load_html(doc->book, ZSTR_VAL(html), (int)ZSTR_LEN(html),
-	                        css ? ZSTR_VAL(css) : "", "", base ? ZSTR_VAL(base) : "file:///");
+	doc->loaded = plutobook_load_html(doc->book, ZSTR_VAL(html), (int)ZSTR_LEN(html),
+	                                  css ? ZSTR_VAL(css) : "", "", base_url);
 	doc->busy = false;
+	if (virtual_base) {
+		zend_string_release(virtual_base);
+	}
 	if (doc->bailed) {
 		zend_bailout();
 	}
+	if (php_plutobook_timed_out()) {
+		zend_timeout();
+	}
 	if (!doc->loaded) {
-		php_plutobook_fail("PlutoBook could not load the HTML document");
+		php_plutobook_fail_because("PlutoBook could not load the HTML document",
+		                           php_plutobook_renderer_detail());
 	}
 }
+
+#define PHP_PLUTOBOOK_STREAM_CLOSED "the destination stream was closed during rendering"
 
 typedef struct {
 	php_stream *stream;
 	zend_resource *borrowed;
 	smart_str bytes;
+	const char *failure;
 	bool failed;
 	bool bailed;
 } php_plutobook_output;
+
+// Runs inside zend_try. Keeping the cursor in this frame means a longjmp cannot clobber it.
+static void php_plutobook_write_stream(php_plutobook_output *out, const char *data, size_t length)
+{
+	while (length) {
+		ssize_t wrote = php_stream_write(out->stream, data, length);
+		if (out->borrowed && out->borrowed->ptr != out->stream) {
+			out->failure = PHP_PLUTOBOOK_STREAM_CLOSED;
+		} else if (wrote <= 0 || (size_t)wrote > length || EG(exception)) {
+			out->failure = "the destination stream did not accept the data";
+		} else {
+			data += wrote;
+			length -= (size_t)wrote;
+			continue;
+		}
+		out->failed = true;
+		return;
+	}
+}
 
 static plutobook_stream_status_t php_plutobook_write(void *closure, const char *data,
                                                      unsigned int length)
 {
 	php_plutobook_output *out = closure;
-	if (out->failed || EG(exception)) {
+	// A write error makes Cairo drop the remaining output, so a timeout ends rendering quickly.
+	if (out->failed || EG(exception) || php_plutobook_timed_out()) {
 		return PLUTOBOOK_STREAM_STATUS_WRITE_ERROR;
 	}
 	// Let the renderer unwind its C++ stack before propagating a Zend bailout.
 	zend_try
 	{
 		if (out->stream) {
-			while (length) {
-				ssize_t wrote = php_stream_write(out->stream, data, length);
-				if (wrote <= 0 || (size_t)wrote > length || EG(exception) ||
-				    (out->borrowed && out->borrowed->ptr != out->stream)) {
-					out->failed = true;
-					break;
-				}
-				data += wrote;
-				length -= (unsigned int)wrote;
-			}
+			php_plutobook_write_stream(out, data, length);
 		} else {
 			smart_str_appendl(&out->bytes, data, length);
 		}
@@ -211,6 +301,7 @@ static bool php_plutobook_render(php_plutobook_document *doc, php_plutobook_outp
 		}
 		if (out->borrowed->ptr != out->stream) {
 			out->failed = true;
+			out->failure = PHP_PLUTOBOOK_STREAM_CLOSED;
 			// Complete the regular resource destructor deferred during the call.
 			// Persistent resources have no per-request list destructor.
 			if (regular) {
@@ -223,9 +314,16 @@ static bool php_plutobook_render(php_plutobook_document *doc, php_plutobook_outp
 		smart_str_free(&out->bytes);
 		zend_bailout();
 	}
+	// Raise the time limit error now, while shutdown functions can still run, instead of
+	// letting PHP's hard timeout kill the process after a long uninterruptible render.
+	if (php_plutobook_timed_out()) {
+		smart_str_free(&out->bytes);
+		zend_timeout();
+	}
 	// PlutoBook 0.20.0 can return true after Cairo reports a callback error.
 	if (!rendered || out->failed || EG(exception)) {
-		php_plutobook_fail("Unable to write the PDF output");
+		php_plutobook_fail_because("Unable to write the PDF output",
+		                           out->failure ? out->failure : php_plutobook_renderer_detail());
 		return false;
 	}
 	return true;
@@ -298,8 +396,19 @@ PHP_METHOD(PlutoBook_Document, writeToFile)
 	}
 }
 
+PHP_METHOD(PlutoBook_Document, getResourceErrors)
+{
+	ZEND_PARSE_PARAMETERS_NONE();
+	php_plutobook_document *doc = php_plutobook_document_from(Z_OBJ_P(ZEND_THIS));
+	if (!doc->resource_errors) {
+		RETURN_EMPTY_ARRAY();
+	}
+	RETURN_ARR(zend_array_dup(doc->resource_errors));
+}
+
 PHP_MINIT_FUNCTION(plutobook)
 {
+	REGISTER_INI_ENTRIES();
 	php_plutobook_exception = register_class_PlutoBook_Exception(spl_ce_RuntimeException);
 	zend_class_entry *ce = register_class_PlutoBook_Document();
 	ce->ce_flags |= ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_NO_DYNAMIC_PROPERTIES;
@@ -311,6 +420,12 @@ PHP_MINIT_FUNCTION(plutobook)
 	return SUCCESS;
 }
 
+PHP_MSHUTDOWN_FUNCTION(plutobook)
+{
+	UNREGISTER_INI_ENTRIES();
+	return SUCCESS;
+}
+
 PHP_MINFO_FUNCTION(plutobook)
 {
 	php_info_print_table_start();
@@ -318,18 +433,23 @@ PHP_MINFO_FUNCTION(plutobook)
 	php_info_print_table_row(2, "Extension version", PHP_PLUTOBOOK_VERSION);
 	php_info_print_table_row(2, "Rendering library", plutobook_version_string());
 	php_info_print_table_end();
+	DISPLAY_INI_ENTRIES();
 }
 
 zend_module_entry plutobook_module_entry = {STANDARD_MODULE_HEADER,
                                             "plutobook",
                                             NULL,
                                             PHP_MINIT(plutobook),
-                                            NULL,
+                                            PHP_MSHUTDOWN(plutobook),
                                             NULL,
                                             NULL,
                                             PHP_MINFO(plutobook),
                                             PHP_PLUTOBOOK_VERSION,
-                                            STANDARD_MODULE_PROPERTIES};
+                                            PHP_MODULE_GLOBALS(plutobook),
+                                            NULL,
+                                            NULL,
+                                            NULL,
+                                            STANDARD_MODULE_PROPERTIES_EX};
 
 #ifdef COMPILE_DL_PLUTOBOOK
 ZEND_GET_MODULE(plutobook)
