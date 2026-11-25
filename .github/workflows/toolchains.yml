@@ -29,6 +29,8 @@ jobs:
             flavor: debug
           - php: ${{ fromJSON(needs.releases.outputs.versions)[0] }}
             flavor: ubsan
+          - php: ${{ fromJSON(needs.releases.outputs.versions)[0] }}
+            flavor: asan
     env:
       PHP_RELEASE: ${{ matrix.php }}
       PHP_FLAVOR: ${{ matrix.flavor }}
@@ -40,7 +42,9 @@ jobs:
       - run: scripts/build-plutobook
       - run: scripts/build-extension "$PHP_RELEASE" "$PHP_FLAVOR"
       - run: scripts/test-extension "$PHP_RELEASE" "$PHP_FLAVOR"
+      # Sanitizer overhead would distort the invoice suite's memory budget.
       - run: scripts/test-invoice "$PHP_RELEASE" "$PHP_FLAVOR"
+        if: matrix.flavor != 'asan'
       - name: Check native rendering, PHP helpers and unit coverage
         if: matrix.php == fromJSON(needs.releases.outputs.versions)[0] && matrix.flavor == 'nts'
         run: |

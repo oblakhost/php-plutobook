@@ -23,11 +23,21 @@ cp -a "$root/ext/." "$build/"
 cd "$build"
 export LDFLAGS="-Wl,-rpath,$engine/lib ${LDFLAGS:-}"
 case "$flavor" in
-  debug) export CFLAGS="-O0 -g ${CFLAGS:-}" ;;
+  # The debug flavor doubles as the warnings gate. Callback signatures make unused parameters normal.
+  debug) export CFLAGS="-O0 -g -Wall -Wextra -Wno-unused-parameter -Werror ${CFLAGS:-}" ;;
   ubsan)
     flags="-fsanitize=undefined -fsanitize-undefined-trap-on-error"
     export CFLAGS="-O1 -g -fno-omit-frame-pointer $flags ${CFLAGS:-}"
     export LDFLAGS="$flags $LDFLAGS"
+    ;;
+  asan)
+    # Match the PHP build's compiler. The module uses the runtime linked into that PHP.
+    source "$root/scripts/sanitizer-cc.sh"
+    CC=$(asan_compiler)
+    export CC CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address ${CFLAGS:-}"
+    export LDFLAGS="-fsanitize=address $LDFLAGS"
+    # Leaks are judged by test-extension, not by configure probes or the load check below.
+    export ASAN_OPTIONS=detect_leaks=0
     ;;
 esac
 "$prefix/bin/phpize"

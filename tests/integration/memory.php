@@ -79,6 +79,9 @@ echo json_encode([
 if ($phpGrowth > 262144) {
     throw new RuntimeException("Steady-state PHP memory grew by $phpGrowth bytes; limit is 262144 bytes");
 }
+// RSS grows about 18 KiB per invoice render through a Cairo leak in PDF page output (see
+// tools/asan/render-loop.c), so this budget only bounds gross regressions. The asan flavor's
+// LeakSanitizer run is the precise gate for leaks in the binding itself.
 if ($rssGrowth > 8192) {
     throw new RuntimeException("Steady-state RSS grew by $rssGrowth KiB; limit is 8192 KiB");
 }

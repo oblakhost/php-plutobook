@@ -46,6 +46,13 @@ fixtures over HTTP or TLS on 127.0.0.1, with a certificate generated at test tim
 The internal-address tests stop before connecting. Keep new remote-asset cases on
 that fixture rather than public hosts.
 
+Native leaks are gated by `scripts/build-php VERSION asan`, then
+`scripts/build-extension VERSION asan` and `scripts/test-extension VERSION asan`.
+The run fails on any LeakSanitizer report. Add a suppression to
+`tools/asan/lsan-suppressions.txt` only for a reproduced upstream leak, scoped
+to its library, with a comment naming the reproducer. Tests that cannot run under
+AddressSanitizer skip themselves when `SKIP_ASAN` is set.
+
 Require **at least 85% executable line coverage** for handwritten native binding
 code from the unit suite alone. Integration and end-to-end runs have separate
 processes and reports. Focus on distinct contracts and failures. Add a regression

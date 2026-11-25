@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
-version=${1:?Usage: test-extension VERSION [nts|debug|ubsan]}
+version=${1:?Usage: test-extension VERSION [nts|debug|ubsan|asan]}
 flavor=${2:-nts}
 source "$root/scripts/php-env.sh"
 module=$(realpath -e "$root/build/extension/$version/$flavor/modules/plutobook.so")
@@ -13,5 +13,18 @@ report=$(mktemp -d "$reports/run.XXXXXX")
 cp -Rf "$root/tests" "$report/tests"
 export FONTCONFIG_FILE="$root/.local/plutobook/0.20.0/etc/fonts/fonts.conf"
 export NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+if [[ $flavor == asan ]]; then
+  # The environment run-tests --asan sets, with this project's suppressions. Each process writes
+  # its own report, so PHPTs that capture only stdout cannot hide a leak.
+  mkdir -p "$report/asan"
+  export USE_ZEND_ALLOC=0 USE_TRACKED_ALLOC=1 SKIP_ASAN=1 SKIP_PERF_SENSITIVE=1
+  export ASAN_OPTIONS="detect_leaks=1:log_path=$report/asan/report"
+  export LSAN_OPTIONS="suppressions=$root/tools/asan/lsan-suppressions.txt:print_suppressions=0"
+fi
 "$php" -n "$runner" -n -p "$php" -d "extension=$module" "$report/tests/unit" | tee "$report/phpt.log"
 grep -Eq 'Tests passed *: +[1-9]' "$report/phpt.log"
+if [[ $flavor == asan ]] && compgen -G "$report/asan/report*" >/dev/null; then
+  cat "$report"/asan/report* >&2
+  echo "AddressSanitizer reported problems: $report/asan" >&2
+  exit 1
+fi

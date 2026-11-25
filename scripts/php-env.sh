@@ -1,6 +1,6 @@
 # Source in Bash scripts after setting root, version and flavor.
-[[ $version =~ ^8\.[0-9]+\.[0-9]+$ && $flavor =~ ^(nts|debug|ubsan)$ ]] || {
-  echo 'Expected an exact PHP release and nts, debug or ubsan' >&2; exit 2;
+[[ $version =~ ^8\.[0-9]+\.[0-9]+$ && $flavor =~ ^(nts|debug|ubsan|asan)$ ]] || {
+  echo 'Expected an exact PHP release and nts, debug, ubsan or asan' >&2; exit 2;
 }
 prefix="$root/.local/php/$version/$flavor"
 php="$prefix/bin/php"

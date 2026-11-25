@@ -5,6 +5,10 @@ Local assets load when /proc is not mounted, as in an FPM chroot
 if (!is_readable('/proc/self/maps')) {
     die('skip /proc is needed to locate the loaded extension');
 }
+// Sanitizer runtimes read their options and run leak checks through /proc.
+if (getenv('SKIP_ASAN')) {
+    die('skip AddressSanitizer cannot run without /proc');
+}
 exec('unshare -Urm sh -c "mount -t tmpfs none /proc" 2>&1', $output, $status);
 if ($status !== 0) {
     die('skip unprivileged user and mount namespaces are unavailable');

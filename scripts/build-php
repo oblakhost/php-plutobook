@@ -19,7 +19,14 @@ case "$flavor" in
     export CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=undefined -fsanitize-undefined-trap-on-error"
     export LDFLAGS="-fsanitize=undefined -fsanitize-undefined-trap-on-error"
     ;;
-  *) echo "Expected nts, debug or ubsan" >&2; exit 1 ;;
+  asan)
+    # LeakSanitizer gate for native code. Extensions load the runtime from this PHP binary.
+    source "$root/scripts/sanitizer-cc.sh"
+    CC=$(asan_compiler)
+    export CC CFLAGS="-O1 -g -fno-omit-frame-pointer"
+    flags+=(--enable-debug --enable-address-sanitizer)
+    ;;
+  *) echo "Expected nts, debug, ubsan or asan" >&2; exit 1 ;;
 esac
 archive=$("$root/scripts/fetch-source" "php-$version.tar.xz")
 build="$root/build/php/$version/$flavor"

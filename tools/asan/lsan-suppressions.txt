@@ -1,0 +1,7 @@
+# LeakSanitizer suppressions for scripts/test-extension VERSION asan.
+# Keep every entry narrow and tied to a tracked upstream problem.
+
+# Cairo 1.18 leaves PDF font-emission state unreachable on every page that
+# plutobook::Book::writeToPdf() finishes with cairo_show_page(): about 14 KB per
+# invoice render. Reproduce outside PHP with tools/asan/render-loop.c.
+leak:libcairo.so

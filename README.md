@@ -265,10 +265,20 @@ Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply t
 
 `scripts/build-php` and `scripts/verify-php` with no arguments build and check
 every pinned NTS runtime. Pass its exact PHP version to the extension build
-and test commands. `debug` and `ubsan` are separate build flavors.
+and test commands. `debug`, `ubsan` and `asan` are separate build flavors.
+`debug` also fails the extension build on compiler warnings. `asan` builds PHP
+and the extension with AddressSanitizer, using GCC when its runtime is installed
+and Clang otherwise. Its unit run fails on any LeakSanitizer report outside
+`tools/asan/lsan-suppressions.txt`.
 `scripts/bootstrap-qa`, `scripts/check-php` and `scripts/unit-coverage` run the
 PHP and native quality checks, including the 85% unit line-coverage gate.
 [Development conventions](CONTRIBUTING.md)
+
+Known issue: Cairo 1.18 leaks about 14 KB of PDF font state per rendered page,
+which shows up as roughly 18 KiB of resident memory per invoice in a long-lived
+worker. The leak is in Cairo, called from PlutoBook, not in this binding.
+`tools/asan/render-loop.c` reproduces it without PHP. Recycle FPM workers with
+`pm.max_requests` until a fixed renderer stack is available.
 
 The Linux NTS matrix covers synthetic invoices. ZTS is unsupported. JavaScript
 and CSS Grid are roadmap items in the pinned renderer. Comparison with the
