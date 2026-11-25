@@ -19,22 +19,39 @@ static zend_class_entry *php_plutobook_exception;
 static zend_object_handlers php_plutobook_handlers;
 
 // Reject malformed sizes. PHP's legacy fallback of 0 would silently remove the cap.
-static ZEND_INI_MH(php_plutobook_update_max_asset_size)
+static bool php_plutobook_ini_size(const zend_ini_entry *entry, zend_string *value, zend_long max,
+                                   const char *expected, zend_long *result)
 {
 	zend_string *error = NULL;
-	zend_long bytes = zend_ini_parse_quantity(new_value, &error);
+	zend_long bytes = zend_ini_parse_quantity(value, &error);
 	bool invalid = error != NULL;
 	if (error) {
 		zend_string_release(error);
 	}
-	if (invalid || bytes < 0 || bytes > INT_MAX || !strpbrk(ZSTR_VAL(new_value), "0123456789")) {
-		zend_error(E_WARNING,
-		           "Invalid \"%s\" setting. Expected 0 or a byte size up to %d, such as 32M",
-		           ZSTR_VAL(entry->name), INT_MAX);
-		return FAILURE;
+	if (invalid || bytes < 0 || bytes > max || !strpbrk(ZSTR_VAL(value), "0123456789")) {
+		zend_error(E_WARNING, "Invalid \"%s\" setting. Expected %s", ZSTR_VAL(entry->name),
+		           expected);
+		return false;
 	}
-	PLUTOBOOK_G(max_asset_size) = bytes;
-	return SUCCESS;
+	*result = bytes;
+	return true;
+}
+
+static ZEND_INI_MH(php_plutobook_update_max_asset_size)
+{
+	return php_plutobook_ini_size(entry, new_value, INT_MAX,
+	                              "0 or a byte size up to 2147483647, such as 32M",
+	                              &PLUTOBOOK_G(max_asset_size))
+	           ? SUCCESS
+	           : FAILURE;
+}
+
+static ZEND_INI_MH(php_plutobook_update_max_total_asset_size)
+{
+	return php_plutobook_ini_size(entry, new_value, ZEND_LONG_MAX, "0 or a byte size such as 128M",
+	                              &PLUTOBOOK_G(max_total_asset_size))
+	           ? SUCCESS
+	           : FAILURE;
 }
 
 static bool php_plutobook_ini_integer(const zend_ini_entry *entry, const zend_string *value,
@@ -62,6 +79,14 @@ static ZEND_INI_MH(php_plutobook_update_http_timeout)
 	           : FAILURE;
 }
 
+static ZEND_INI_MH(php_plutobook_update_http_document_timeout)
+{
+	return php_plutobook_ini_integer(entry, new_value, 0, 86400,
+	                                 &PLUTOBOOK_G(http_document_timeout))
+	           ? SUCCESS
+	           : FAILURE;
+}
+
 static ZEND_INI_MH(php_plutobook_update_http_max_redirects)
 {
 	return php_plutobook_ini_integer(entry, new_value, 0, 20, &PLUTOBOOK_G(http_max_redirects))
@@ -71,7 +96,11 @@ static ZEND_INI_MH(php_plutobook_update_http_max_redirects)
 
 PHP_INI_BEGIN()
 PHP_INI_ENTRY("plutobook.max_asset_size", "32M", PHP_INI_ALL, php_plutobook_update_max_asset_size)
+PHP_INI_ENTRY("plutobook.max_total_asset_size", "128M", PHP_INI_ALL,
+              php_plutobook_update_max_total_asset_size)
 PHP_INI_ENTRY("plutobook.http_timeout", "10", PHP_INI_ALL, php_plutobook_update_http_timeout)
+PHP_INI_ENTRY("plutobook.http_document_timeout", "30", PHP_INI_ALL,
+              php_plutobook_update_http_document_timeout)
 PHP_INI_ENTRY("plutobook.http_max_redirects", "5", PHP_INI_ALL,
               php_plutobook_update_http_max_redirects)
 STD_PHP_INI_ENTRY("plutobook.http_ca_file", "", PHP_INI_ALL, OnUpdateString, http_ca_file,
@@ -264,6 +293,8 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 	if (doc->resource_errors) {
 		zend_hash_clean(doc->resource_errors);
 	}
+	doc->asset_bytes = 0;
+	doc->network_ms = 0;
 	const char *base_url = virtual_base ? ZSTR_VAL(virtual_base)
 	                       : base       ? ZSTR_VAL(base)
 	                                    : "file:///";

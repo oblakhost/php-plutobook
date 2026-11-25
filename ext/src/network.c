@@ -19,6 +19,9 @@ typedef struct {
 	bool too_large;
 	bool blocked;
 	bool interrupted;
+	// Whether the document budgets, rather than the per-asset settings, set limit and deadline.
+	bool total_limited;
+	bool document_limited;
 	char blocked_address[INET6_ADDRSTRLEN];
 } php_plutobook_download;
 
@@ -349,10 +352,17 @@ php_plutobook_transfer_error(CURLcode result, const php_plutobook_download *down
 	switch (result) {
 	case CURLE_FILESIZE_EXCEEDED:
 	case CURLE_WRITE_ERROR:
-		return download->too_large || result == CURLE_FILESIZE_EXCEEDED
-		           ? PHP_PLUTOBOOK_ASSET_TOO_LARGE
-		           : PHP_PLUTOBOOK_ASSET_READ_ERROR;
+		if (!download->too_large && result != CURLE_FILESIZE_EXCEEDED) {
+			return PHP_PLUTOBOOK_ASSET_READ_ERROR;
+		}
+		snprintf(detail, detail_size, "%s",
+		         download->total_limited ? "plutobook.max_total_asset_size reached"
+		                                 : "larger than plutobook.max_asset_size");
+		return PHP_PLUTOBOOK_ASSET_TOO_LARGE;
 	case CURLE_OPERATION_TIMEDOUT:
+		if (download->document_limited) {
+			snprintf(detail, detail_size, "plutobook.http_document_timeout reached");
+		}
 		return PHP_PLUTOBOOK_ASSET_TIMEOUT;
 	case CURLE_PEER_FAILED_VERIFICATION:
 	case CURLE_SSL_CONNECT_ERROR:
@@ -414,6 +424,24 @@ plutobook_resource_data_t *php_plutobook_fetch_remote(php_plutobook_document *do
                                                       php_plutobook_asset_status *status,
                                                       char *detail, size_t detail_size)
 {
+	// Per-asset limits, tightened by what the document's budgets have left.
+	const zend_long max_size = PLUTOBOOK_G(max_asset_size);
+	const size_t asset_limit = max_size ? (size_t)max_size : INT_MAX;
+	const size_t bytes_left = php_plutobook_asset_bytes_left(doc);
+	const int64_t request_ms = PLUTOBOOK_G(http_timeout) * 1000;
+	const zend_long document_timeout = PLUTOBOOK_G(http_document_timeout);
+	const int64_t document_ms =
+	    document_timeout ? document_timeout * 1000 - doc->network_ms : INT64_MAX;
+	if (!bytes_left) {
+		snprintf(detail, detail_size, "plutobook.max_total_asset_size reached");
+		*status = PHP_PLUTOBOOK_ASSET_TOO_LARGE;
+		return NULL;
+	}
+	if (document_ms <= 0) {
+		snprintf(detail, detail_size, "plutobook.http_document_timeout reached");
+		*status = PHP_PLUTOBOOK_ASSET_TIMEOUT;
+		return NULL;
+	}
 	if (!doc->http) {
 		doc->http = curl_easy_init();
 	}
@@ -424,16 +452,22 @@ plutobook_resource_data_t *php_plutobook_fetch_remote(php_plutobook_document *do
 		*status = PHP_PLUTOBOOK_ASSET_NETWORK_ERROR;
 		return NULL;
 	}
-	const zend_long max_size = PLUTOBOOK_G(max_asset_size);
-	php_plutobook_download download = {.limit = max_size ? (size_t)max_size : INT_MAX};
-	const int64_t deadline = php_plutobook_now_ms() + PLUTOBOOK_G(http_timeout) * 1000;
+	php_plutobook_download download = {
+	    .limit = bytes_left < asset_limit ? bytes_left : asset_limit,
+	    .total_limited = bytes_left < asset_limit,
+	    .document_limited = document_ms < request_ms,
+	};
+	const int64_t started = php_plutobook_now_ms();
+	const int64_t deadline = started + (download.document_limited ? document_ms : request_ms);
 	plutobook_resource_data_t *resource = NULL;
 	bool secure = false;
 	for (zend_long hop = 0;; hop++) {
 		*status = php_plutobook_check_target(doc, target, hop > 0, &secure, detail, detail_size);
 		const int64_t remaining = deadline - php_plutobook_now_ms();
 		if (*status == PHP_PLUTOBOOK_ASSET_OK && remaining <= 0) {
-			snprintf(detail, detail_size, "plutobook.http_timeout reached");
+			snprintf(detail, detail_size, "%s",
+			         download.document_limited ? "plutobook.http_document_timeout reached"
+			                                   : "plutobook.http_timeout reached");
 			*status = PHP_PLUTOBOOK_ASSET_TIMEOUT;
 		}
 		if (*status != PHP_PLUTOBOOK_ASSET_OK) {
@@ -477,6 +511,10 @@ plutobook_resource_data_t *php_plutobook_fetch_remote(php_plutobook_document *do
 			*status = PHP_PLUTOBOOK_ASSET_READ_ERROR;
 		}
 		break;
+	}
+	doc->network_ms += php_plutobook_now_ms() - started;
+	if (resource) {
+		doc->asset_bytes += download.size;
 	}
 	free(download.bytes);
 	free(target);

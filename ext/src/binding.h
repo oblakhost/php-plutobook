@@ -17,7 +17,9 @@
 // Expanded ZEND_BEGIN/END_MODULE_GLOBALS, spelled out so clang-format can indent the members.
 typedef struct _zend_plutobook_globals {
 	zend_long max_asset_size;
+	zend_long max_total_asset_size;
 	zend_long http_timeout;
+	zend_long http_document_timeout;
 	zend_long http_max_redirects;
 	char *http_ca_file;
 	bool allow_private_addresses;
@@ -63,6 +65,9 @@ typedef struct {
 	HashTable *allowed_hosts;
 	// The document's libcurl easy handle, created on first use so connections are reused.
 	void *http;
+	// Budgets since the last loadHtml(): asset bytes handed to the renderer, network time spent.
+	size_t asset_bytes;
+	int64_t network_ms;
 	int asset_dir;
 	bool loaded;
 	bool busy;
@@ -77,6 +82,16 @@ typedef struct {
 static inline bool php_plutobook_timed_out(void)
 {
 	return zend_atomic_bool_load_ex(&EG(timed_out));
+}
+
+// Bytes the document may still load under plutobook.max_total_asset_size; 0 removes the cap.
+static inline size_t php_plutobook_asset_bytes_left(const php_plutobook_document *doc)
+{
+	const zend_long total = PLUTOBOOK_G(max_total_asset_size);
+	if (!total) {
+		return SIZE_MAX;
+	}
+	return doc->asset_bytes < (size_t)total ? (size_t)total - doc->asset_bytes : 0;
 }
 
 bool php_plutobook_page_options(zend_string *paper, zend_string *orientation, zend_string *margins,

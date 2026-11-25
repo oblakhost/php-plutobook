@@ -186,6 +186,12 @@ is rejected. Invalid values raise a warning and keep the previous setting.
 The current value applies to every fetch, including fonts and images that
 PlutoBook loads while it renders.
 
+`plutobook.max_total_asset_size` caps the bytes one document loads across all of
+its local and remote assets, including repeated fetches of the same file under
+different URLs. It defaults to `128M`, accepts the same shorthand and `0` removes
+it. Assets that would cross the cap are skipped as `too-large` with the detail
+`plutobook.max_total_asset_size reached`. Each `loadHtml()` starts a new budget.
+
 ### Remote assets
 
 Documents load nothing over the network unless `loadHtml()` lists the hosts
@@ -226,13 +232,17 @@ $document->loadHtml(
 | Setting | Default | Changeable | Meaning |
 | --- | --- | --- | --- |
 | `plutobook.http_timeout` | `10` | `ini_set()` | Seconds per asset, including redirects (1–3600). |
+| `plutobook.http_document_timeout` | `30` | `ini_set()` | Network seconds per document across all its assets (0 = no cap, up to 86400). |
 | `plutobook.http_max_redirects` | `5` | `ini_set()` | Redirects followed per asset (0–20). |
 | `plutobook.http_ca_file` | empty | `ini_set()` | CA bundle to trust instead of libcurl's default. |
 | `plutobook.allow_private_addresses` | `Off` | php.ini, `.user.ini`, FPM pool | Allow internal addresses. |
 
 Network time is wall-clock time, which PHP's `max_execution_time` does not count
-on Linux. A document with many slow assets can take up to `http_timeout` seconds
-per asset, so keep the timeout small for interactive requests.
+on Linux. Each asset gets at most `http_timeout` seconds. All remote assets of a
+document share `http_document_timeout` seconds, counted from `loadHtml()` and
+including fonts and images fetched while rendering. Once that budget is spent,
+the remaining remote assets are skipped as `timeout` with the detail
+`plutobook.http_document_timeout reached`.
 
 ### Building against system libraries
 

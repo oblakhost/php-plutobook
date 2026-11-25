@@ -346,6 +346,12 @@ static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_documen
 	if (*status != PHP_PLUTOBOOK_ASSET_OK) {
 		return NULL;
 	}
+	if (size > php_plutobook_asset_bytes_left(doc)) {
+		close(reader);
+		snprintf(detail, detail_size, "plutobook.max_total_asset_size reached");
+		*status = PHP_PLUTOBOOK_ASSET_TOO_LARGE;
+		return NULL;
+	}
 	// Give PlutoBook ownership of one native buffer. Reading the verified fd
 	// keeps descriptor cleanup independent of Zend.
 	char *bytes = malloc(size);
@@ -370,6 +376,8 @@ static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_documen
 	if (!result) {
 		free(bytes);
 		*status = PHP_PLUTOBOOK_ASSET_READ_ERROR;
+	} else {
+		doc->asset_bytes += size;
 	}
 	return result;
 }

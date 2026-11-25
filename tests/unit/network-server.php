@@ -59,7 +59,8 @@ for ($served = 0; $served < 1000; $served++) {
     while (!str_contains($request, "\r\n\r\n") && ($line = fgets($client)) !== false) {
         $request .= $line;
     }
-    $path = explode(' ', $request)[1] ?? '/';
+    // Route on the path alone, so "?n" can make otherwise identical URLs distinct.
+    $path = strtok(explode(' ', $request)[1] ?? '/', '?') ?: '/';
     if ($path === '/slow.png') {
         sleep(3);
     }
