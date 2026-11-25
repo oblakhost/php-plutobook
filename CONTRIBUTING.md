@@ -61,10 +61,13 @@ private and compare content, clipping and pagination against its Gotenberg PDF.
 
 ## Release
 
-Use Conventional Commits. `fix:` produces a patch, `feat:` a minor release, and
-`BREAKING CHANGE:` or `!:` a major release. Routine documentation and test-only
-commits do not request a release. The release configuration follows the GitHub
-default branch, `master`.
+Use Conventional Commits with the release rules shared with our WooCommerce
+plugins. `feat:` produces a minor release. `fix:`, `perf:`, `compat:`,
+`refactor:` and `style:` produce a patch. `BREAKING CHANGE:`,
+`BREAKING CHANGES:` or `!:` produce a major release. `chore:` and routine
+documentation or test-only commits do not request a release. Release notes
+group commits under the plugins' sections. The release configuration follows
+the GitHub default branch, `master`.
 
 Release development uses the Node version in `.node-version` and `npm ci`.
 The GitHub Actions workflow builds the private toolchains, runs the PHPT and
