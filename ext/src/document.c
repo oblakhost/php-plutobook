@@ -93,6 +93,7 @@ static zend_object *php_plutobook_create_object(zend_class_entry *ce)
 	zend_object_std_init(&doc->std, ce);
 	object_properties_init(&doc->std, ce);
 	doc->std.handlers = &php_plutobook_handlers;
+	doc->asset_dir = -1;
 	return &doc->std;
 }
 
@@ -202,6 +203,9 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 	if (!php_plutobook_ready(doc, false)) {
 		RETURN_THROWS();
 	}
+	// A bailout ended the previous load's request. Only a shutdown function can get here, and
+	// it may load the document again.
+	doc->bailed = false;
 	if (css && memchr(ZSTR_VAL(css), 0, ZSTR_LEN(css))) {
 		zend_argument_value_error(3, "must not contain null bytes");
 		RETURN_THROWS();
@@ -479,7 +483,6 @@ PHP_MINIT_FUNCTION(plutobook)
 	}
 	php_plutobook_exception = register_class_PlutoBook_Exception(spl_ce_RuntimeException);
 	zend_class_entry *ce = register_class_PlutoBook_Document();
-	ce->ce_flags |= ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_NO_DYNAMIC_PROPERTIES;
 	ce->create_object = php_plutobook_create_object;
 	memcpy(&php_plutobook_handlers, zend_get_std_object_handlers(), sizeof(php_plutobook_handlers));
 	php_plutobook_handlers.offset = offsetof(php_plutobook_document, std);

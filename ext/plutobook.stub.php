@@ -8,6 +8,10 @@ class Exception extends \RuntimeException
 {
 }
 
+/**
+ * @strict-properties
+ * @not-serializable
+ */
 final class Document
 {
     public function __construct(string $pageSize = "A4", string $orientation = "portrait", string $margins = "15mm") {}
@@ -21,6 +25,6 @@ final class Document
 
     public function writeToFile(string $path): void {}
 
-    /** @return list<array{url: string, reason: string}> */
+    /** @return list<array{url: string, reason: string, detail: string}> */
     public function getResourceErrors(): array {}
 }

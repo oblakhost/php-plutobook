@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 6581a096da723852a06aba3503d18a53a29ec091 */
+ * Stub hash: ce1abe480f6a91897ee73ab0c9eaf40d01379e92 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PlutoBook_Document___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, pageSize, IS_STRING, 0, "\"A4\"")
@@ -69,7 +69,7 @@ static zend_class_entry *register_class_PlutoBook_Document(void)
 
 	INIT_NS_CLASS_ENTRY(ce, "PlutoBook", "Document", class_PlutoBook_Document_methods);
 	class_entry = zend_register_internal_class_ex(&ce, NULL);
-	class_entry->ce_flags |= ZEND_ACC_FINAL;
+	class_entry->ce_flags |= ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES|ZEND_ACC_NOT_SERIALIZABLE;
 
 	return class_entry;
 }
