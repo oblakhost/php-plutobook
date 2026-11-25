@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "$root"
+versions=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' tools/sources.sha256)
+if (($# == 0)); then
+  for version in $versions; do "$root/scripts/build-php" "$version"; done
+  exit
+fi
+version=$1
+flavor=${2:-nts}
+grep -Fxq "$version" <<<"$versions" || { echo "Unknown release: $version" >&2; exit 1; }
+flags=()
+case "$flavor" in
+  nts) ;;
+  debug) flags+=(--enable-debug) ;;
+  ubsan)
+    flags+=(--enable-debug)
+    export CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=undefined -fsanitize-undefined-trap-on-error"
+    export LDFLAGS="-fsanitize=undefined -fsanitize-undefined-trap-on-error"
+    ;;
+  *) echo "Expected nts, debug or ubsan" >&2; exit 1 ;;
+esac
+archive=$("$root/scripts/fetch-source" "php-$version.tar.xz")
+build="$root/build/php/$version/$flavor"
+prefix="$root/.local/php/$version/$flavor"
+log="$root/artifacts/php/$version/$flavor"
+mkdir -p "$build" "$prefix/etc/conf.d" "$log"
+exec 9>"$build/compile.lock"
+flock 9
+export PHPRC="$prefix/etc/php.ini" PHP_INI_SCAN_DIR="$prefix/etc/conf.d"
+touch "$PHPRC"
+# Refuse bare PHP lookups until this installation supplies them.
+guard="$build/path-guard"
+mkdir -p "$guard"
+for program in php phpize php-config php-fpm; do
+  printf '#!/bin/sh\necho "Unexpected PATH lookup for %s" >&2\nexit 127\n' "$program" > "$guard/$program"
+  chmod +x "$guard/$program"
+done
+export PATH="$prefix/bin:$prefix/sbin:$guard:$PATH"
+export TMPDIR="$build/tmp"
+mkdir -p "$TMPDIR"
+cd "$build"
+if [[ ! -f src/.unpacked ]]; then
+  mkdir -p src
+  tar -xf "$archive" --strip-components=1 -C src
+  touch src/.unpacked
+fi
+cd src
+flags+=(--prefix="$prefix" --with-config-file-path="$prefix/etc"
+  --with-config-file-scan-dir="$prefix/etc/conf.d" --disable-all
+  --enable-cli --enable-fpm --disable-cgi --disable-phpdbg --without-pear
+  --enable-tokenizer --enable-phar --enable-filter --enable-ctype
+  --with-libxml --enable-dom --enable-xml --enable-xmlwriter --enable-simplexml
+  --with-iconv --with-openssl --with-zlib)
+# Configure again when the script or its flags change. make resumes interrupted builds.
+if [[ ! -f Makefile || "$root/scripts/build-php" -nt Makefile ]]; then
+  ./configure "${flags[@]}" >"$log/configure.log" 2>&1 || { tail -40 "$log/configure.log" >&2; exit 1; }
+fi
+cpus=$(nproc)
+memory_jobs=$(awk '/MemAvailable:/ {print int($2 / 786432)}' /proc/meminfo)
+jobs=$((cpus < memory_jobs ? cpus : memory_jobs))
+jobs=$((jobs > 8 ? 8 : jobs))
+jobs=$((jobs > 0 ? jobs : 1))
+echo "Building PHP $version ($flavor) with $jobs jobs"
+make -j"$jobs" PHP="$PWD/sapi/cli/php" >"$log/make.log" 2>&1 || { tail -40 "$log/make.log" >&2; exit 1; }
+make install PHP="$PWD/sapi/cli/php" >"$log/install.log" 2>&1 || { tail -40 "$log/install.log" >&2; exit 1; }
+{
+  uname -sm
+  "${CC:-cc}" --version
+  "$prefix/bin/php-config" --configure-options
+  "$prefix/bin/php" --ini
+  "$prefix/bin/php" -r 'printf("%s %s %s debug=%d zts=%d ext=%s\n", PHP_BINARY, PHP_VERSION, php_uname("m"), PHP_DEBUG, PHP_ZTS, ini_get("extension_dir"));'
+} > "$log/build-info.txt"
+cat "$log/build-info.txt"

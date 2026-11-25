@@ -1,0 +1,21 @@
+{
+  "name": "oblakhost/php-pdf",
+  "description": "Native PHP extension for rendering HTML and CSS to PDF with PlutoBook",
+  "type": "php-ext",
+  "require": {
+    "php": ">=8.2 <8.7"
+  },
+  "php-ext": {
+    "extension-name": "plutobook",
+    "build-path": "ext",
+    "support-zts": false,
+    "support-nts": true,
+    "os-families": [
+      "linux"
+    ],
+    "download-url-method": [
+      "pre-packaged-source"
+    ]
+  },
+  "license": "Apache-2.0"
+}

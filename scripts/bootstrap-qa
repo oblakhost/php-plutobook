@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${1:-8.2.36}
+flavor=nts
+source "$root/scripts/php-env.sh"
+composer=$("$root/scripts/fetch-source" composer.phar)
+"$php" "$composer" install --working-dir="$root/tools/qa" --no-interaction --no-plugins --no-scripts
+if [[ ! -x "$root/.local/qa/bin/python" ]]; then
+  python3 -m venv "$root/.local/qa"
+fi
+"$root/.local/qa/bin/python" -m pip install --cache-dir "$root/.cache/pip" -r "$root/tools/qa/requirements.txt"

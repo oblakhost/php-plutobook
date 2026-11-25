@@ -5,3 +5,11 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Private toolchains, dependency downloads and generated output
+/.local/
+/.cache/
+/build/
+/artifacts/
+/node_modules/
+/tools/qa/vendor/

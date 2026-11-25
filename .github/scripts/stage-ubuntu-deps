@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Supply missing Ubuntu build headers and PDF tools under the checkout.
+set -euo pipefail
+if pkg-config --exists cairo-fc cairo-ft cairo-png cairo-pdf freetype2 fontconfig harfbuzz icu-uc \
+    openssl zlib libxml-2.0 && command -v pdftoppm >/dev/null; then
+  exit 0
+fi
+
+root=$(cd "$(dirname "$0")/../.." && pwd -P)
+cache="$root/.cache/ubuntu"
+prefix="$root/.local/ubuntu"
+mkdir -p "$cache"/{archives,lists}/partial "$prefix"
+apt=(apt-get -o "Dir::State::lists=$cache/lists" -o "Dir::Cache=$cache"
+  -o "Dir::Cache::archives=$cache/archives" -o Debug::NoLocking=true)
+"${apt[@]}" update
+"${apt[@]}" --download-only --no-install-recommends --yes install \
+  libcairo2-dev libfreetype-dev libfontconfig-dev libharfbuzz-dev libicu-dev \
+  libssl-dev zlib1g-dev libxml2-dev poppler-utils
+shopt -s nullglob
+for deb in "$cache"/archives/*.deb; do dpkg-deb -x "$deb" "$prefix"; done
+
+arch=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+libdir="$prefix/usr/lib/$arch"
+includedir="$prefix/usr/include"
+# Packages use /usr in their pkg-config files. Point only the staged copies
+# at the checkout, leaving already installed system packages discoverable.
+while IFS= read -r -d '' pc; do
+  sed -i -E "s#=/usr(/|$)#=$prefix/usr\\1#" "$pc"
+done < <(find "$prefix" -name '*.pc' -print0)
+{
+  echo "PKG_CONFIG_PATH=$libdir/pkgconfig:$prefix/usr/share/pkgconfig"
+  echo "CPATH=$includedir/$arch:$includedir"
+  echo "LIBRARY_PATH=$libdir"
+  echo "LD_LIBRARY_PATH=$libdir"
+} >> "$GITHUB_ENV"
+echo "$prefix/usr/bin" >> "$GITHUB_PATH"

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+if (($# == 0)); then
+  while read -r v; do "$root/scripts/verify-php" "$v"; done < <(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
+  exit
+fi
+version=$1
+flavor=${2:-nts}
+source "$root/scripts/php-env.sh"
+fixture="$root/tests/toolchain/runtime.php"
+log="$root/artifacts/php/$version/$flavor"
+mkdir -p "$log"
+run=$(mktemp -d "$log/fpm.XXXXXX")
+fpm="$prefix/sbin/php-fpm"
+config="$prefix/bin/php-config"
+[[ $("$config" --version) == "$version" && $("$config" --prefix) == "$prefix" ]]
+"$prefix/bin/phpize" --version > "$run/phpize.txt"
+verify() {
+  jq -e --arg v "$version" --arg binary "$2" --arg sapi "$3" --arg prefix "$prefix" \
+    --arg arch "$(uname -m)" --arg flavor "$flavor" --arg ext "$("$config" --extension-dir)" \
+    '.version == $v and .binary == $binary and .sapi == $sapi and .architecture == $arch and
+     .ini == ($prefix + "/etc/php.ini") and (.scanned == false or (.scanned | split(",\n") | all(startswith($prefix + "/etc/conf.d/")))) and
+     .extension_dir == $ext and (.extension_dir | startswith($prefix + "/")) and
+     .zts == false and .debug == ($flavor != "nts")' "$1" >/dev/null
+}
+"$php" "$fixture" > "$run/cli.json"
+verify "$run/cli.json" "$php" cli
+source "$root/scripts/private-fpm.sh"
+start_private_fpm "$root" "$prefix" "$run"
+"$php" -d "auto_prepend_file=$client" "$root/scripts/fastcgi-request.php" --socket "$socket" --file "$fixture" > "$run/fpm.json"
+verify "$run/fpm.json" "$fpm" fpm-fcgi
+echo "Verified PHP $version $flavor CLI and FastCGI ($run)"

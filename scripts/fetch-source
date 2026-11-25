@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Fetch exactly one pinned input and print its absolute path.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+name=${1:?Usage: fetch-source php-VERSION.tar.xz or composer.phar}
+read -r digest url < <(awk -v name="$name" 'split($2, parts, "/") && parts[length(parts)] == name {print $1, $2}' "$root/tools/sources.sha256")
+case $name in
+  composer.phar) version=$(basename "$(dirname "$url")"); name="composer-$version.phar" ;;
+esac
+dir="$root/.cache/sources"
+mkdir -p "$dir"
+file="$dir/$name"
+exec 9>"$file.lock"
+flock 9
+verify() { printf '%s  %s\n' "$digest" "$1" | sha256sum --check --status; }
+if ! verify "$file" 2>/dev/null; then
+  tmp=$(mktemp "$dir/$name.XXXXXX")
+  trap 'rm -f -- "$tmp"' EXIT
+  curl -fsSL --retry 3 "$url" -o "$tmp"
+  verify "$tmp" || { echo "Checksum mismatch for $url" >&2; exit 1; }
+  mv -f -- "$tmp" "$file"
+fi
+printf '%s\n' "$file"

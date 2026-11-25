@@ -1,0 +1,4 @@
+# glibc does not implement Annex K memcpy_s/memset_s. Zend uses standard C memory functions.
+Checks: '-*,clang-analyzer-*,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,bugprone-sizeof-expression,bugprone-suspicious-memset-usage'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*[\\/]src[\\/].*'

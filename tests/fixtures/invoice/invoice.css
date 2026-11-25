@@ -1,0 +1,19 @@
+body {
+    margin: 0;
+    font: 10pt/1.35 "DejaVu Sans", sans-serif;
+    color: #223344;
+}
+header { border-bottom: 2pt solid #223344; padding-bottom: 8pt; }
+header img { width: 28pt; height: 28pt; vertical-align: middle; margin-right: 8pt; }
+h1 { margin: 14pt 0 4pt; font-size: 21pt; }
+h2 { font-size: 13pt; margin: 12pt 0 4pt; }
+p { margin: 0 0 7pt; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; border-bottom: 1pt solid #223344; }
+th, td { padding: 4pt 2pt; vertical-align: top; }
+td { border-bottom: 0.4pt solid #b6c1cb; }
+tr, .totals { page-break-inside: avoid; }
+.sku { width: 18%; }
+.amount { width: 22%; text-align: right; white-space: nowrap; }
+.totals { margin: 12pt 0 0 auto; width: 55%; }
+.totals td { padding: 3pt 2pt; }

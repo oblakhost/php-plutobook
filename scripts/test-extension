@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${1:?Usage: test-extension VERSION [nts|debug|ubsan]}
+flavor=${2:-nts}
+source "$root/scripts/php-env.sh"
+module=$(realpath -e "$root/build/extension/$version/$flavor/modules/plutobook.so")
+runner="$root/build/php/$version/$flavor/src/run-tests.php"
+reports="$root/artifacts/unit/$version/$flavor"
+mkdir -p "$reports"
+report=$(mktemp -d "$reports/run.XXXXXX")
+# run-tests writes temporary PHP scripts and failure diffs next to each PHPT.
+cp -Rf "$root/tests" "$report/tests"
+export FONTCONFIG_FILE="$root/.local/plutobook/0.20.0/etc/fonts/fonts.conf"
+export NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+"$php" -n "$runner" -n -p "$php" -d "extension=$module" "$report/tests/unit" | tee "$report/phpt.log"
+grep -Eq 'Tests passed *: +[1-9]' "$report/phpt.log"

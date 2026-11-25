@@ -1,0 +1,18 @@
+# Official source releases checked 2026-11-25. SHA-256 followed by HTTPS URL.
+df50a00d2b453096608bf2bd98a9fab9a3df8678a77b93011b65c3cfe9a018fa  https://www.php.net/distributions/php-8.2.36.tar.xz
+0237af84478b7a7649d3964153f1b8653d622550b846f56d63062de683fb86bb  https://www.php.net/distributions/php-8.3.37.tar.xz
+0c8ec360e5dd8154f270b2fd50cd44ecc824e6ee39c85f911312b80d4daecd72  https://www.php.net/distributions/php-8.4.28.tar.xz
+607602acaf0c3061818e9916ec44a058e8b3d43959a83862b9cd3ec7bf5b785f  https://www.php.net/distributions/php-8.5.13.tar.xz
+5f84beaa3d763aee1e4feed99bf54ec692c383b322e25626807b589238c3a087  https://www.php.net/distributions/php-8.6.0.tar.xz
+04f8b003da4e3a2459056591fbfebd02b4dc3e5adeb158616b90cf55a65113ec  https://getcomposer.org/download/2.11.3/composer.phar
+# PlutoBook v0.20.0, immutable commit archive
+eb50eaba0c2868737331cd67339b049134e714f77e2447d836c178fca7103a7f  https://codeload.github.com/plutoprint/plutobook/tar.gz/8df624e11bd55d8e4f276ebf559335aa29fb926c
+# Private renderer tool and invoice fonts
+4e076606f2afff7881d195574bddcd8d89286f35a17b4977a216f535dc0c74ac  https://files.pythonhosted.org/packages/48/d8/6c1dd1c740b7d5fd73a6ad67900a09e3dd6642013f58fa9e22ae6faaffc7/meson-1.9.1.tar.gz
+fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7  https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2
+# Source fallbacks from PlutoBook's pinned subproject manifests
+3ad89b8588e6644bd4e49981480d48b21289eebbcd4f0a1a4afb1c29f99b6ab4  https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz
+ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022  https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz
+e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564  https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
+# Parser required by the PHP 8.2 stub generator
+3809fd405ac0d154bb5f3525ebc91dd06e282ddd25fcccffa21df44ba470b64a  https://codeload.github.com/nikic/PHP-Parser/tar.gz/refs/tags/v4.15.1

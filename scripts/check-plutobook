@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Exercise the upstream CLI with the same invoice used by the PHP CLI and FPM suites.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${1:-8.2.36}
+flavor=nts
+source "$root/scripts/php-env.sh"
+engine="$root/.local/plutobook/0.20.0"
+export FONTCONFIG_FILE="$engine/etc/fonts/fonts.conf"
+export XDG_CACHE_HOME="$root/.cache"
+base="$root/artifacts/renderer"
+mkdir -p "$base"
+out=$(mktemp -d "$base/run.XXXXXX")
+fixture="$root/tests/fixtures/invoice"
+cp -f "$fixture"/{invoice.css,logo.svg} "$out/"
+"$php" -n "$fixture/generate.php" > "$out/invoice.html"
+"$engine/bin/html2pdf" --size a4 --margin 15mm "$out/invoice.html" "$out/invoice.pdf"
+python3 "$root/tests/integration/inspect-invoice.py" "$out/invoice.pdf"
+echo "Native invoice artifacts: $out"

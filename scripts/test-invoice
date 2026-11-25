@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${1:?Usage: test-invoice VERSION [nts|debug|ubsan]}
+flavor=${2:-nts}
+source "$root/scripts/php-env.sh"
+module="$root/build/extension/$version/$flavor/modules/plutobook.so"
+engine="$root/.local/plutobook/0.20.0"
+export FONTCONFIG_FILE="$engine/etc/fonts/fonts.conf"
+for file in "$module" "$FONTCONFIG_FILE" "$engine/share/fonts/dejavu/DejaVuSans.ttf" \
+  "$engine/share/fonts/dejavu/DejaVuSans-Bold.ttf"; do
+  [[ -r "$file" ]] || { echo "Missing build prerequisite: $file" >&2; exit 1; }
+done
+log="$root/artifacts/invoice/$version/$flavor"
+mkdir -p "$log"
+run=$(mktemp -d "$log/run.XXXXXX")
+echo "Testing PHP $version $flavor invoice in $run"
+# Resolve assets through the document's base URL, independent of the working directory.
+cd "$run"
+php_args=(-n -d "extension=$module" -d display_errors=stderr)
+"$php" -n "$root/tests/fixtures/invoice/generate.php" > "$run/invoice.html"
+"$php" "${php_args[@]}" "$root/tests/integration/invoice.php" "$run/invoice.html" "$run"
+python3 "$root/tests/integration/inspect-invoice.py" "$run/cli.pdf"
+pdfinfo "$run/short.pdf" > "$run/short.info.txt"
+grep -Eq '^Pages:[[:space:]]+1$' "$run/short.info.txt"
+grep -Eq '^Page size:[[:space:]]+792 x 612 pts' "$run/short.info.txt"
+pdftotext -layout "$run/short.pdf" "$run/short.txt"
+for snippet in 'Q-104' 'annual-renewal.accounting-department.example.test' 'Managed DNS' 'Total 60.00 EUR' 'Valid for 30 days'; do
+  grep -Fq "$snippet" "$run/short.txt"
+done
+pdftotext "$run/missing.pdf" "$run/missing.txt"
+grep -Fxq 'Pre nedostupne slike' "$run/missing.txt"
+grep -Fxq 'Posle nedostupne slike' "$run/missing.txt"
+"$php" "${php_args[@]}" "$root/tests/integration/memory.php" "$run/invoice.html" > "$run/memory.json"
+
+source "$root/scripts/private-fpm.sh"
+start_private_fpm "$root" "$prefix" "$run" "${php_args[@]}"
+"$php" -n -d "auto_prepend_file=$client" "$root/scripts/fastcgi-request.php" \
+  --socket "$socket" --file "$root/tests/integration/invoice.php" --html "$run/invoice.html" > "$run/fpm.pdf"
+python3 "$root/tests/integration/inspect-invoice.py" "$run/fpm.pdf"
+# Identical content and page pixels across SAPIs, allowing metadata such as creation time to differ.
+cmp "$run/cli.txt" "$run/fpm.txt"
+cmp "$run/cli.inspection.json" "$run/fpm.inspection.json"
+cat "$run/memory.json"
+echo "Verified PHP $version $flavor invoice with private CLI and FastCGI ($run)"

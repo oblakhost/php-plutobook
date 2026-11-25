@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Report one fresh, GCC-instrumented extension build after its unit suite.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+build=$(cd "${1:?Usage: check-unit-coverage BUILD_DIRECTORY REPORT_DIRECTORY}" && pwd -P)
+mkdir -p "${2:?Missing coverage report directory}"
+report=$(cd "$2" && pwd -P)
+cd "$build"
+[[ -d src && -n $(find . -name '*.gcda' -print -quit) ]] || {
+  echo "Missing native unit execution data in $build" >&2; exit 1;
+}
+# Include unexecuted translation units. Limit the denominator to binding code.
+"$root/.local/qa/bin/gcovr" --root . --filter 'src/' --exclude '.*_arginfo\.h$' --include 'src/.*\.c$' \
+  --json-summary "$report/summary.json" --html-details "$report/index.html" \
+  --print-summary --fail-under-line 85 .
+jq -e '.line_total > 0 and .line_covered * 100 >= 85 * .line_total' "$report/summary.json" >/dev/null

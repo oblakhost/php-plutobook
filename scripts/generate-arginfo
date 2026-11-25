@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=8.2.36
+flavor=nts
+source "$root/scripts/php-env.sh"
+generator="$root/build/php/$version/$flavor/src/build"
+parser="$generator/PHP-Parser-4.15.1"
+archive=$("$root/scripts/fetch-source" v4.15.1)
+mkdir -p "$parser"
+tar -xf "$archive" -C "$parser" --strip-components=1
+"$php" -n "$generator/gen_stub.php" --force-regeneration "$root/ext/plutobook.stub.php"

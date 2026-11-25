@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=0.20.0
+build="$root/build/plutobook/$version"
+prefix="$root/.local/plutobook/$version"
+licenses="$prefix/share/licenses"
+jobs=${JOBS:-$(nproc)}
+if ((jobs > 6)); then jobs=6; fi
+mkdir -p "$build/tmp" "$prefix" "$licenses"
+exec 9>"$build/compile.lock"
+flock 9
+export TMPDIR="$build/tmp"
+export XDG_CACHE_HOME="$root/.cache"
+export PKG_CONFIG_PATH="$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export LD_LIBRARY_PATH="$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Source stamps are written only after extraction finishes. Always verify the archive.
+unpack() {
+  local name=$1 dir=$2 archive
+  archive=$("$root/scripts/fetch-source" "$name")
+  if [[ ! -f "$dir/.unpacked-$name" ]]; then
+    mkdir -p "$dir"
+    tar -xf "$archive" --strip-components=1 -C "$dir"
+    touch "$dir/.unpacked-$name"
+  fi
+}
+
+cmake_dependency() {
+  local package=$1 archive=$2
+  shift 2
+  local src="$build/$package/source" obj="$build/$package/build"
+  if pkg-config --exists "$package" && [[ ! -d "$obj" ]]; then return; fi
+  unpack "$archive" "$src"
+  cmake -G Ninja -S "$src" -B "$obj" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_RPATH="$prefix/lib" \
+    -DBUILD_SHARED_LIBS=ON "$@"
+  cmake --build "$obj" --parallel "$jobs"
+  cmake --install "$obj"
+  mkdir -p "$licenses/$package"
+  case "$package" in
+    expat) cp -f "$src/COPYING" "$licenses/$package/" ;;
+    libturbojpeg) cp -f "$src"/{LICENSE.md,README.ijg} "$licenses/$package/" ;;
+    libwebp) cp -f "$src"/{COPYING,PATENTS} "$licenses/$package/" ;;
+  esac
+}
+
+pkg-config --print-errors --exists cairo-fc cairo-ft cairo-png cairo-pdf freetype2 fontconfig harfbuzz icu-uc
+unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$build/source"
+unpack meson-1.9.1.tar.gz "$build/meson-1.9.1"
+unpack dejavu-fonts-ttf-2.37.tar.bz2 "$build/dejavu"
+mkdir -p "$prefix/share/fonts/dejavu" "$prefix/etc/fonts" "$prefix/var/cache/fontconfig" \
+  "$licenses/dejavu" "$licenses/plutobook"
+cp -f "$build/dejavu/ttf"/DejaVuSans{,-Bold}.ttf "$prefix/share/fonts/dejavu/"
+cp -f "$build/dejavu"/{LICENSE,AUTHORS} "$licenses/dejavu/"
+cp -f "$build/source"/{LICENSE,CREDITS} "$licenses/plutobook/"
+cp -Rf "$build/source/licenses" "$licenses/plutobook/"
+# Fontconfig versions differ on relative cache directories. Anchor both paths.
+python3 - "$prefix" <<'PY'
+from pathlib import Path
+import sys
+import xml.etree.ElementTree as ET
+
+prefix = Path(sys.argv[1])
+config = ET.Element("fontconfig")
+ET.SubElement(config, "dir").text = str(prefix / "share/fonts/dejavu")
+ET.SubElement(config, "cachedir").text = str(prefix / "var/cache/fontconfig")
+ET.ElementTree(config).write(prefix / "etc/fonts/fonts.conf", encoding="utf-8", xml_declaration=True)
+PY
+
+cmake_dependency expat expat-2.8.2.tar.xz -DEXPAT_BUILD_TOOLS=OFF -DEXPAT_BUILD_EXAMPLES=OFF \
+  -DEXPAT_BUILD_TESTS=OFF -DEXPAT_BUILD_DOCS=OFF
+cmake_dependency libturbojpeg libjpeg-turbo-3.1.4.1.tar.gz -DENABLE_STATIC=OFF \
+  -DWITH_TOOLS=OFF -DWITH_TESTS=OFF
+cmake_dependency libwebp libwebp-1.6.0.tar.gz -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF \
+  -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
+  -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF
+
+meson=(python3 "$build/meson-1.9.1/meson.py")
+setup=()
+if [[ -f "$build/obj/meson-private/coredata.dat" ]]; then setup+=(--reconfigure); fi
+"${meson[@]}" setup "${setup[@]}" --prefix="$prefix" --libdir=lib --buildtype=release \
+  --wrap-mode=nofallback -Ddefault_library=shared -Dcurl=disabled -Dturbojpeg=enabled \
+  -Dcpp_link_args="['-Wl,-rpath,$prefix/lib']" -Dwebp=enabled -Dtools=enabled "$build/obj" "$build/source"
+"${meson[@]}" compile -C "$build/obj" -j "$jobs"
+"${meson[@]}" install -C "$build/obj" --no-rebuild
+pkg-config --exact-version="$version" plutobook

@@ -75,3 +75,11 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+## PHP extension development
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for native ownership, style, tests,
+and release conventions. Use only the checkout's source-built PHP CLI, FPM,
+headers and tools, including for Composer, PHPCS, PHPStan, stubs, and PHPT.
+Install new build dependencies into private project prefixes. Treat system
+binaries, libraries, PHP configuration, and global symlinks as read-only.

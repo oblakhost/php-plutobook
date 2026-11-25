@@ -1,0 +1,30 @@
+* text=auto eol=lf
+*.pdf binary
+*.png binary
+*.jpg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+
+/.agents export-ignore
+/.beads export-ignore
+/.claude export-ignore
+/.codex export-ignore
+/.cursor export-ignore
+/.github export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/tools/qa export-ignore
+/node_modules export-ignore
+/package*.json export-ignore
+/release.config.mjs export-ignore
+/.npmrc export-ignore
+/.node-version export-ignore
+/scripts export-ignore
+/tools export-ignore
+/CONTRIBUTING.md export-ignore
+/.clang-* export-ignore
+/.editorconfig export-ignore
+/phpcs.xml.dist export-ignore
+/phpstan.neon.dist export-ignore

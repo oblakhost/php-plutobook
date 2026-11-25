@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${1:?Usage: build-extension VERSION [nts|debug|ubsan]}
+flavor=${2:-nts}
+source "$root/scripts/php-env.sh"
+config="$prefix/bin/php-config"
+[[ $("$config" --prefix) == "$prefix" && $("$config" --version) == "$version" ]]
+
+engine="$root/.local/plutobook/0.20.0"
+export PKG_CONFIG_PATH="$engine/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+if ! pkg-config --exact-version=0.20.0 plutobook || [[ $(pkg-config --variable=libdir plutobook) != "$engine/lib" ]]; then
+  echo "Build the private renderer first: scripts/build-plutobook" >&2
+  exit 1
+fi
+
+base="$root/build/extension/$version/$flavor"
+mkdir -p "$base/modules"
+exec 9>"$base/compile.lock"
+flock 9
+build=$(mktemp -d "$base/run.XXXXXX")
+cp -a "$root/ext/." "$build/"
+cd "$build"
+export LDFLAGS="-Wl,-rpath,$engine/lib ${LDFLAGS:-}"
+case "$flavor" in
+  debug) export CFLAGS="-O0 -g ${CFLAGS:-}" ;;
+  ubsan)
+    flags="-fsanitize=undefined -fsanitize-undefined-trap-on-error"
+    export CFLAGS="-O1 -g -fno-omit-frame-pointer $flags ${CFLAGS:-}"
+    export LDFLAGS="$flags $LDFLAGS"
+    ;;
+esac
+"$prefix/bin/phpize"
+./configure --with-php-config="$config" --with-plutobook
+make -j2
+
+module="$build/modules/plutobook.so"
+ldd "$module" > linkage.txt
+linked=$(awk '/libplutobook\.so/ {print $3}' linkage.txt)
+[[ $(realpath -e "$linked") == "$engine/lib/"* ]] || { cat linkage.txt >&2; exit 1; }
+# shellcheck disable=SC2016 # PHP reads its own argv.
+"$php" -n -d "extension=$module" -r '
+    exit(extension_loaded("plutobook") && PHP_VERSION === $argv[1]
+        && !PHP_ZTS && (bool) PHP_DEBUG === ($argv[2] !== "nts") ? 0 : 1);
+' "$version" "$flavor"
+# Publish only a loadable module, replacing the previous build atomically.
+ln -s "$module" "$build/verified.so"
+mv -Tf "$build/verified.so" "$base/modules/plutobook.so"
+echo "Verified PHP $version $flavor module: $base/modules/plutobook.so"

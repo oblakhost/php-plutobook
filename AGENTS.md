@@ -125,3 +125,11 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## PHP extension development
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for native ownership, style, tests,
+and release conventions. Use only the checkout's source-built PHP CLI, FPM,
+headers and tools, including for Composer, PHPCS, PHPStan, stubs, and PHPT.
+Install new build dependencies into private project prefixes. Treat system
+binaries, libraries, PHP configuration, and global symlinks as read-only.
