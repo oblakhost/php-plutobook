@@ -14,5 +14,8 @@ fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7  https://github
 3ad89b8588e6644bd4e49981480d48b21289eebbcd4f0a1a4afb1c29f99b6ab4  https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz
 ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022  https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz
 e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564  https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
+# libcurl for remote assets when the host lacks its development files.
+# Checked 2026-11-25 against curl.se/info and the GitHub release asset.
+e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49  https://curl.se/download/curl-8.23.0.tar.gz
 # Parser required by the PHP 8.2 stub generator
 3809fd405ac0d154bb5f3525ebc91dd06e282ddd25fcccffa21df44ba470b64a  https://codeload.github.com/nikic/PHP-Parser/tar.gz/refs/tags/v4.15.1

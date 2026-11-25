@@ -23,5 +23,15 @@ libraries and fonts actually included in a binary distribution.
 · [MPL 2.0, sections 3.1–3.4](https://www.mozilla.org/en-US/MPL/2.0/)
 · [Mozilla's guidance for distributors](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)
 
+## libcurl
+
+The binding links to libcurl as a separate shared library for remote assets.
+libcurl uses the curl license, an MIT/X-derived permissive license. Distribution
+builds link the system libcurl. When the host lacks one with HTTPS,
+`scripts/build-plutobook` downloads curl 8.23.0 into the private cache and
+installs its `COPYING` file under the private prefix's `share/licenses/libcurl`.
+Binary distributions that bundle libcurl must include that notice.
+[Upstream license](https://curl.se/docs/copyright.html)
+
 The PHP sources, test client, and development tools are downloaded separately
 for local builds. Each retains its upstream license.

@@ -6,13 +6,8 @@
 #include "ext/standard/info.h"
 #include "main/fopen_wrappers.h"
 #include "../plutobook_arginfo.h"
+#include <errno.h>
 #include <unistd.h>
-
-#if __has_include("../release-version.h")
-#include "../release-version.h"
-#else
-#define PHP_PLUTOBOOK_VERSION "0.1.0-dev"
-#endif
 
 #ifdef ZTS
 #error "This release supports NTS PHP builds only"
@@ -42,8 +37,49 @@ static ZEND_INI_MH(php_plutobook_update_max_asset_size)
 	return SUCCESS;
 }
 
+static bool php_plutobook_ini_integer(const zend_ini_entry *entry, const zend_string *value,
+                                      zend_long min, zend_long max, zend_long *result)
+{
+	const char *text = ZSTR_VAL(value);
+	char *end = NULL;
+	errno = 0;
+	zend_long number = ZEND_STRTOL(text, &end, 10);
+	if (end == text || *end || errno || number < min || number > max) {
+		zend_error(E_WARNING,
+		           "Invalid \"%s\" setting. Expected an integer from " ZEND_LONG_FMT
+		           " to " ZEND_LONG_FMT,
+		           ZSTR_VAL(entry->name), min, max);
+		return false;
+	}
+	*result = number;
+	return true;
+}
+
+static ZEND_INI_MH(php_plutobook_update_http_timeout)
+{
+	return php_plutobook_ini_integer(entry, new_value, 1, 3600, &PLUTOBOOK_G(http_timeout))
+	           ? SUCCESS
+	           : FAILURE;
+}
+
+static ZEND_INI_MH(php_plutobook_update_http_max_redirects)
+{
+	return php_plutobook_ini_integer(entry, new_value, 0, 20, &PLUTOBOOK_G(http_max_redirects))
+	           ? SUCCESS
+	           : FAILURE;
+}
+
 PHP_INI_BEGIN()
 PHP_INI_ENTRY("plutobook.max_asset_size", "32M", PHP_INI_ALL, php_plutobook_update_max_asset_size)
+PHP_INI_ENTRY("plutobook.http_timeout", "10", PHP_INI_ALL, php_plutobook_update_http_timeout)
+PHP_INI_ENTRY("plutobook.http_max_redirects", "5", PHP_INI_ALL,
+              php_plutobook_update_http_max_redirects)
+STD_PHP_INI_ENTRY("plutobook.http_ca_file", "", PHP_INI_ALL, OnUpdateString, http_ca_file,
+                  zend_plutobook_globals, plutobook_globals)
+// Reaching internal services is an operator decision, so scripts cannot turn it on.
+STD_PHP_INI_BOOLEAN("plutobook.allow_private_addresses", "0", PHP_INI_SYSTEM | PHP_INI_PERDIR,
+                    OnUpdateBool, allow_private_addresses, zend_plutobook_globals,
+                    plutobook_globals)
 PHP_INI_END()
 
 static php_plutobook_document *php_plutobook_document_from(zend_object *object)
@@ -73,6 +109,10 @@ static void php_plutobook_free_object(zend_object *object)
 	if (doc->resource_errors) {
 		zend_array_destroy(doc->resource_errors);
 	}
+	if (doc->allowed_hosts) {
+		zend_array_destroy(doc->allowed_hosts);
+	}
+	php_plutobook_network_release(doc);
 	zend_object_std_dtor(object);
 }
 
@@ -148,12 +188,14 @@ PHP_METHOD(PlutoBook_Document, __construct)
 PHP_METHOD(PlutoBook_Document, loadHtml)
 {
 	zend_string *html, *base = NULL, *css = NULL, *document_root = NULL;
-	ZEND_PARSE_PARAMETERS_START(1, 4)
+	HashTable *hosts = NULL;
+	ZEND_PARSE_PARAMETERS_START(1, 5)
 	Z_PARAM_STR(html)
 	Z_PARAM_OPTIONAL
 	Z_PARAM_STR_OR_NULL(base)
 	Z_PARAM_STR(css)
 	Z_PARAM_STR_OR_NULL(document_root)
+	Z_PARAM_ARRAY_HT(hosts)
 	ZEND_PARSE_PARAMETERS_END();
 
 	php_plutobook_document *doc = php_plutobook_document_from(Z_OBJ_P(ZEND_THIS));
@@ -168,8 +210,23 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 		zend_argument_value_error(1, "exceeds the renderer's maximum HTML length");
 		RETURN_THROWS();
 	}
+	// A remote baseUrl only resolves relative URLs. It never grants access to local files.
+	const bool remote_base = base && php_plutobook_is_remote_url(base);
+	if (remote_base && document_root) {
+		zend_argument_value_error(2, "must be a file:/// URL when documentRoot is given");
+		RETURN_THROWS();
+	}
+	if (remote_base && !php_plutobook_check_remote_base(base, 2)) {
+		RETURN_THROWS();
+	}
+	bool failed = false;
+	HashTable *allowed = hosts ? php_plutobook_parse_allowed_hosts(hosts, 5, &failed) : NULL;
+	if (failed) {
+		RETURN_THROWS();
+	}
 	// The asset root confines file reads. With documentRoot it is also the virtual URL root,
 	// and PlutoBook resolves URLs against the base directory's path below it.
+	const bool local_base = base && !remote_base;
 	int directory = -1;
 	zend_string *root = NULL, *virtual_base = NULL;
 	if (document_root) {
@@ -180,10 +237,13 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 			zend_string_release(root);
 			root = NULL;
 		}
-	} else if (base) {
+	} else if (local_base) {
 		root = php_plutobook_asset_root(base, &directory, 2);
 	}
-	if ((base || document_root) && !root) {
+	if ((local_base || document_root) && !root) {
+		if (allowed) {
+			zend_array_destroy(allowed);
+		}
 		RETURN_THROWS();
 	}
 	if (doc->asset_root) {
@@ -193,6 +253,10 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 	doc->asset_root = root;
 	doc->asset_dir = directory;
 	doc->virtual_root = virtual_base != NULL;
+	if (doc->allowed_hosts) {
+		zend_array_destroy(doc->allowed_hosts);
+	}
+	doc->allowed_hosts = allowed;
 	if (doc->resource_errors) {
 		zend_hash_clean(doc->resource_errors);
 	}
@@ -409,6 +473,10 @@ PHP_METHOD(PlutoBook_Document, getResourceErrors)
 PHP_MINIT_FUNCTION(plutobook)
 {
 	REGISTER_INI_ENTRIES();
+	if (!php_plutobook_network_startup()) {
+		UNREGISTER_INI_ENTRIES();
+		return FAILURE;
+	}
 	php_plutobook_exception = register_class_PlutoBook_Exception(spl_ce_RuntimeException);
 	zend_class_entry *ce = register_class_PlutoBook_Document();
 	ce->ce_flags |= ZEND_ACC_NOT_SERIALIZABLE | ZEND_ACC_NO_DYNAMIC_PROPERTIES;
@@ -422,6 +490,7 @@ PHP_MINIT_FUNCTION(plutobook)
 
 PHP_MSHUTDOWN_FUNCTION(plutobook)
 {
+	php_plutobook_network_shutdown();
 	UNREGISTER_INI_ENTRIES();
 	return SUCCESS;
 }
@@ -432,6 +501,7 @@ PHP_MINFO_FUNCTION(plutobook)
 	php_info_print_table_row(2, "PlutoBook support", "enabled");
 	php_info_print_table_row(2, "Extension version", PHP_PLUTOBOOK_VERSION);
 	php_info_print_table_row(2, "Rendering library", plutobook_version_string());
+	php_info_print_table_row(2, "HTTP client", php_plutobook_network_version());
 	php_info_print_table_end();
 	DISPLAY_INI_ENTRIES();
 }

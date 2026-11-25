@@ -39,7 +39,9 @@ Build prerequisites include Bash, GCC/G++ with C++20, Make, Autoconf, pkg-config
 CMake, Ninja, Python 3, curl, tar, flock, jq, and development headers for
 OpenSSL, zlib, libxml2, iconv, Cairo (PDF/PNG/FreeType/Fontconfig), FreeType,
 Fontconfig, HarfBuzz and ICU. The renderer script supplies pinned private builds
-of missing Expat, TurboJPEG and WebP dependencies. PDF inspection uses Poppler.
+of missing Expat, TurboJPEG and WebP dependencies. It also builds libcurl, HTTP
+and HTTPS only, when the host has no libcurl development files with HTTPS.
+PDF inspection uses Poppler.
 QA uses Python venv/pip and unzip or 7z for Composer.
 
 All PHP builds, binaries, headers and ini files live under this checkout.
@@ -55,11 +57,12 @@ compiler details and private FPM request evidence are under `artifacts/`.
   orientation. Margins use CSS shorthand (top, right, bottom, left) with one to
   four nonnegative lengths in pt, mm, cm, in, px or pc. Unitless zero is valid.
   A stylesheet's `@page` rules can change the initial page settings.
-- `loadHtml(string $html, ?string $baseUrl = null, string $css = "", ?string $documentRoot = null): void`
+- `loadHtml(string $html, ?string $baseUrl = null, string $css = "", ?string $documentRoot = null, array $allowedHosts = []): void`
   loads UTF-8 HTML and an optional override stylesheet. Calling it again replaces
   the document content. Ordinary imperfect markup follows the renderer's HTML parser.
   `$baseUrl` and `$documentRoot` select local asset directories, as described in
-  [Assets and fonts](#assets-and-fonts).
+  [Assets and fonts](#assets-and-fonts). `$baseUrl` can also be an `http(s)://` page
+  URL, and `$allowedHosts` opts the document into [remote assets](#remote-assets).
   PlutoBook ranks `$css` above the document's own styles. Its normal declarations
   override `<style>` elements, linked stylesheets and inline `style` attributes,
   whatever their specificity. Document `!important` declarations still beat normal
@@ -133,31 +136,40 @@ refused. After those checks it reopens the resolved path one component at a time
 without following symlinks, so a path swapped for a symlink in the meantime is
 refused. It does not need `/proc`, so it also works in an FPM `chroot`. Devices,
 FIFOs and sockets are inspected but never opened for reading. Network requests
-are disabled. Missing or denied resources are
+are disabled unless the document lists `allowedHosts`. Missing or denied resources are
 omitted while surrounding content renders. The renderer also uses Fontconfig for
 installed fonts. The fixture scripts select a private Fontconfig file for
 repeatable output.
 
-Each skipped resource appears once in `getResourceErrors()` with one of these
-reasons. Fonts and background images can be fetched during rendering, so check
-the list after `toPdf()` or a write method. To make missing assets fatal, throw
-when the list is not empty.
+Each skipped resource appears once in `getResourceErrors()` as
+`['url' => …, 'reason' => …, 'detail' => …]`. `reason` is one of the stable codes
+below, and `detail` is human-readable text such as `HTTP 404`. Fonts and
+background images can be fetched during rendering, so check the list after
+`toPdf()` or a write method. To make missing assets fatal, throw when the list is
+not empty.
 
 | Reason | Meaning |
 | --- | --- |
-| `network-disabled` | An `http:` or `https:` URL. Network requests are disabled. |
+| `network-disabled` | An `http:` or `https:` URL in a document without `allowedHosts`. |
 | `unsupported-scheme` | Any other non-`file:` URL. |
 | `no-base-url` | A local file without a `baseUrl` or `documentRoot` directory. |
-| `invalid-url` | A malformed `file:` URL, such as one with an encoded NUL byte. |
+| `invalid-url` | A malformed URL, such as a `file:` URL with an encoded NUL byte. |
 | `missing` | The file does not exist. |
 | `open-basedir` | PHP's `open_basedir` blocks the file. |
 | `outside-base` | The resolved file lies outside the `documentRoot`, or the `baseUrl` directory without one. |
 | `verification-failed` | A directory or the file changed between the checks and the read. |
 | `not-regular-file` | A directory, FIFO, socket or device. |
-| `empty` | A zero-byte file. |
-| `too-large` | The file exceeds `plutobook.max_asset_size`. |
+| `empty` | A zero-byte file or response body. |
+| `too-large` | The file or response exceeds `plutobook.max_asset_size`. |
 | `permission-denied` | The PHP process cannot read the file. |
-| `read-error` | Reading or handing the file to the renderer failed. |
+| `read-error` | Reading or handing the data to the renderer failed. |
+| `host-not-allowed` | The host, or a redirect target's host, is not in `allowedHosts`. |
+| `blocked-address` | The host resolved to an internal address. |
+| `http-error` | The final response status is not 2xx. |
+| `redirect-error` | Too many redirects, a redirect from https to http, or to another scheme. |
+| `tls-error` | The TLS handshake or certificate verification failed. |
+| `timeout` | The request exceeded `plutobook.http_timeout`, or PHP's time limit passed. |
+| `network-error` | DNS, connection and other transfer failures. |
 
 PlutoBook 0.20.0 also prints one `WARNING:` line per skipped resource to the
 process's stderr. The binding cannot suppress that output. The line names the
@@ -165,13 +177,79 @@ reason and URL, for example
 `WARNING: Asset skipped, outside the asset directory: file:///…`.
 
 Asset bytes are native allocations outside `memory_limit`. The
-`plutobook.max_asset_size` setting caps each local file. It defaults to `32M`,
+`plutobook.max_asset_size` setting caps each local file and each remote response
+body after decompression. It defaults to `32M`,
 accepts PHP size shorthand (`K`, `M`, `G`) and can be changed with `ini_set()`.
 Larger files are skipped like missing resources. `0` removes the binding's cap.
 Values must stay at or below 2147483647 bytes, the renderer's own limit, so `2G`
 is rejected. Invalid values raise a warning and keep the previous setting.
 The current value applies to every fetch, including fonts and images that
 PlutoBook loads while it renders.
+
+### Remote assets
+
+Documents load nothing over the network unless `loadHtml()` lists the hosts
+they may contact. An empty list, the default, keeps the network off.
+
+```php
+$document->loadHtml(
+    $html,
+    baseUrl: 'https://shop.example/invoices/42/',
+    allowedHosts: ['shop.example', 'fonts.gstatic.com', '*.cdn.example'],
+);
+```
+
+- **Host patterns.** Each entry is an exact host name such as `shop.example`, a
+  `*.example.com` pattern that matches its subdomains (but not `example.com`
+  itself), a bracketed IPv6 literal such as `[2001:db8::1]`, or `*` for any host.
+  Use the ASCII (punycode) form of international domain names.
+- **Remote `baseUrl`.** An `http://` or `https://` page URL resolves relative and
+  root-relative references the way a browser does. It grants no access to local
+  files, and it cannot be combined with `documentRoot`. A local `baseUrl` or
+  `documentRoot` can still be combined with `allowedHosts` for absolute
+  `https://` assets.
+- **Request policy.** Only `http` and `https` are used. Redirects are followed by
+  the binding, which checks every hop against `allowedHosts` and refuses
+  redirects from https to http or to other schemes. TLS certificates and host
+  names are always verified, with TLS 1.2 or newer. Proxy environment variables
+  such as `http_proxy` are ignored, and no cookies are stored. Each document
+  reuses its own connections across assets.
+- **Internal addresses.** Connections to loopback, private (10/8, 172.16/12,
+  192.168/16, 100.64/10, fc00::/7), link-local (169.254/16 including cloud
+  metadata, fe80::/10), multicast, reserved and unspecified addresses are
+  refused. The check uses the address actually connected to, so DNS names
+  cannot bypass it. An operator can allow them with
+  `plutobook.allow_private_addresses`.
+- **Dependencies.** The binding uses the libcurl C library directly. PHP's `curl`
+  extension is not needed.
+
+| Setting | Default | Changeable | Meaning |
+| --- | --- | --- | --- |
+| `plutobook.http_timeout` | `10` | `ini_set()` | Seconds per asset, including redirects (1–3600). |
+| `plutobook.http_max_redirects` | `5` | `ini_set()` | Redirects followed per asset (0–20). |
+| `plutobook.http_ca_file` | empty | `ini_set()` | CA bundle to trust instead of libcurl's default. |
+| `plutobook.allow_private_addresses` | `Off` | php.ini, `.user.ini`, FPM pool | Allow internal addresses. |
+
+Network time is wall-clock time, which PHP's `max_execution_time` does not count
+on Linux. A document with many slow assets can take up to `http_timeout` seconds
+per asset, so keep the timeout small for interactive requests.
+
+### Building against system libraries
+
+Distribution packages and PIE installs build the extension with the usual
+`phpize`, `./configure --with-plutobook` and `make`. `configure` reads its
+dependencies through `pkg-config`:
+
+- **PlutoBook 0.20.0** (`plutobook.pc`). It builds with Meson. This project uses
+  `-Ddefault_library=shared -Dturbojpeg=enabled -Dwebp=enabled`. Use `-Dcurl=disabled`:
+  the binding fetches remote assets itself and never uses PlutoBook's HTTP client.
+- **libcurl 7.68.0 or newer with HTTP and HTTPS** (`libcurl.pc`, for example
+  `libcurl4-openssl-dev` or `libcurl-devel`). `configure` stops with an error if
+  libcurl is missing or lacks either protocol.
+
+Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
+`configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
+`scripts/build-plutobook` passes `LDFLAGS` on to the renderer's link step.
 
 ## Verification and distribution
 

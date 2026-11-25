@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 93993498521e629fd29f3a4f5245ea5afdb9a612 */
+ * Stub hash: 6581a096da723852a06aba3503d18a53a29ec091 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PlutoBook_Document___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, pageSize, IS_STRING, 0, "\"A4\"")
@@ -12,6 +12,7 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PlutoBook_Document_loadHtm
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, baseUrl, IS_STRING, 1, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, css, IS_STRING, 0, "\"\"")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, documentRoot, IS_STRING, 1, "null")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, allowedHosts, IS_ARRAY, 0, "[]")
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PlutoBook_Document_toPdf, 0, 0, IS_STRING, 0)

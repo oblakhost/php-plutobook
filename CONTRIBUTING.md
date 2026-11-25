@@ -41,6 +41,11 @@ Place each assertion at the lowest level that can detect the failure reliably.
 | Integration | Render synthetic invoices with pinned fonts and assets. Extract text and page properties to check Serbian Latin and Cyrillic, currencies, line items, totals, long descriptions, pagination, missing resources and explicit base locations. Check lifecycle behavior with process memory and native diagnostics. |
 | End to end | Send an HTML invoice through a real private FPM worker, load the ABI-matched extension and inspect the returned PDF. Run CLI and FPM on every supported stable NTS branch. The existing toolchain smoke test checks the runtimes before the extension exists. |
 
+Network PHPTs never leave the machine. `tests/unit/network-server.php` serves
+fixtures over HTTP or TLS on 127.0.0.1, with a certificate generated at test time.
+The internal-address tests stop before connecting. Keep new remote-asset cases on
+that fixture rather than public hosts.
+
 Require **at least 85% executable line coverage** for handwritten native binding
 code from the unit suite alone. Integration and end-to-end runs have separate
 processes and reports. Focus on distinct contracts and failures. Add a regression

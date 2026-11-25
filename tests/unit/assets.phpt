@@ -13,7 +13,7 @@ file_put_contents("$dir/base/dot 1.png", $png);
 file_put_contents("$dir/outside.png", $png);
 $base = "file://$dir/base/";
 $doc = new Document();
-foreach (['https://example.invalid/', 'relative', $base . 'dot%201.png', $base . 'absent/',
+foreach (['ftp://example.invalid/', 'relative', $base . 'dot%201.png', $base . 'absent/',
           $base . '?query/', $base . "%00/"] as $bad) {
     try { $doc->loadHtml('text', $bad); } catch (ValueError $e) { echo "invalid base\n"; }
 }

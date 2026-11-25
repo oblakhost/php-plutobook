@@ -7,34 +7,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-typedef enum {
-	PHP_PLUTOBOOK_ASSET_OK,
-	PHP_PLUTOBOOK_ASSET_NETWORK_DISABLED,
-	PHP_PLUTOBOOK_ASSET_UNSUPPORTED_SCHEME,
-	PHP_PLUTOBOOK_ASSET_NO_BASE_URL,
-	PHP_PLUTOBOOK_ASSET_INVALID_URL,
-	PHP_PLUTOBOOK_ASSET_MISSING,
-	PHP_PLUTOBOOK_ASSET_OPEN_BASEDIR,
-	PHP_PLUTOBOOK_ASSET_OUTSIDE_BASE,
-	PHP_PLUTOBOOK_ASSET_VERIFICATION_FAILED,
-	PHP_PLUTOBOOK_ASSET_NOT_REGULAR_FILE,
-	PHP_PLUTOBOOK_ASSET_EMPTY,
-	PHP_PLUTOBOOK_ASSET_TOO_LARGE,
-	PHP_PLUTOBOOK_ASSET_PERMISSION_DENIED,
-	PHP_PLUTOBOOK_ASSET_READ_ERROR,
-} php_plutobook_asset_status;
-
 // Reason codes are public API through Document::getResourceErrors(); keep them stable.
 static const struct {
 	const char *code;
 	const char *description;
 } php_plutobook_asset_reasons[] = {
     [PHP_PLUTOBOOK_ASSET_OK] = {"", ""},
-    [PHP_PLUTOBOOK_ASSET_NETWORK_DISABLED] = {"network-disabled", "network access is disabled"},
+    [PHP_PLUTOBOOK_ASSET_NETWORK_DISABLED] = {"network-disabled",
+                                              "network access needs allowedHosts"},
     [PHP_PLUTOBOOK_ASSET_UNSUPPORTED_SCHEME] = {"unsupported-scheme", "unsupported URL scheme"},
     [PHP_PLUTOBOOK_ASSET_NO_BASE_URL] = {"no-base-url",
                                          "local files need a baseUrl or documentRoot directory"},
-    [PHP_PLUTOBOOK_ASSET_INVALID_URL] = {"invalid-url", "malformed file URL"},
+    [PHP_PLUTOBOOK_ASSET_INVALID_URL] = {"invalid-url", "malformed URL"},
     [PHP_PLUTOBOOK_ASSET_MISSING] = {"missing", "file not found"},
     [PHP_PLUTOBOOK_ASSET_OPEN_BASEDIR] = {"open-basedir", "blocked by open_basedir"},
     [PHP_PLUTOBOOK_ASSET_OUTSIDE_BASE] = {"outside-base", "outside the asset directory"},
@@ -45,7 +29,50 @@ static const struct {
     [PHP_PLUTOBOOK_ASSET_TOO_LARGE] = {"too-large", "larger than plutobook.max_asset_size"},
     [PHP_PLUTOBOOK_ASSET_PERMISSION_DENIED] = {"permission-denied", "not readable by PHP"},
     [PHP_PLUTOBOOK_ASSET_READ_ERROR] = {"read-error", "read failed"},
+    [PHP_PLUTOBOOK_ASSET_HOST_NOT_ALLOWED] = {"host-not-allowed", "host not in allowedHosts"},
+    [PHP_PLUTOBOOK_ASSET_BLOCKED_ADDRESS] = {"blocked-address", "internal network address"},
+    [PHP_PLUTOBOOK_ASSET_HTTP_ERROR] = {"http-error", "HTTP error status"},
+    [PHP_PLUTOBOOK_ASSET_REDIRECT_ERROR] = {"redirect-error", "redirect refused"},
+    [PHP_PLUTOBOOK_ASSET_TLS_ERROR] = {"tls-error", "TLS or certificate error"},
+    [PHP_PLUTOBOOK_ASSET_TIMEOUT] = {"timeout", "request timed out"},
+    [PHP_PLUTOBOOK_ASSET_NETWORK_ERROR] = {"network-error", "network error"},
 };
+
+// The extension table PlutoBook's own loaders use. Only SVG needs a type to be decoded;
+// bitmaps are recognised by content and text resources ignore it.
+const char *php_plutobook_mime_from_path(const char *path, size_t length)
+{
+	static const struct {
+		const char *extension;
+		const char *mime;
+	} types[] = {{"xhtml", "application/xhtml+xml"},
+	             {"html", "text/html"},
+	             {"htm", "text/html"},
+	             {"txt", "text/plain"},
+	             {"css", "text/css"},
+	             {"xml", "text/xml"},
+	             {"jpeg", "image/jpeg"},
+	             {"jpg", "image/jpeg"},
+	             {"png", "image/png"},
+	             {"webp", "image/webp"},
+	             {"svg", "image/svg+xml"},
+	             {"gif", "image/gif"},
+	             {"bmp", "image/bmp"}};
+	const char *dot = NULL;
+	for (size_t i = length; i-- > 0 && path[i] != '/';) {
+		if (path[i] == '.') {
+			dot = path + i + 1;
+			break;
+		}
+	}
+	for (size_t i = 0; dot && i < sizeof(types) / sizeof(types[0]); i++) {
+		size_t size = strlen(types[i].extension);
+		if ((size_t)(path + length - dot) == size && !strncasecmp(dot, types[i].extension, size)) {
+			return types[i].mime;
+		}
+	}
+	return "";
+}
 
 static php_plutobook_asset_status php_plutobook_decode_file_url(const char *url,
                                                                 char decoded[MAXPATHLEN])
@@ -276,10 +303,14 @@ static php_plutobook_asset_status php_plutobook_open_leaf(int parent, const char
 
 static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_document *doc,
                                                            const char *url,
-                                                           php_plutobook_asset_status *status)
+                                                           php_plutobook_asset_status *status,
+                                                           char *detail, size_t detail_size)
 {
 	char path[MAXPATHLEN];
 	*status = php_plutobook_scheme(url);
+	if (*status == PHP_PLUTOBOOK_ASSET_NETWORK_DISABLED && doc->allowed_hosts) {
+		return php_plutobook_fetch_remote(doc, url, status, detail, detail_size);
+	}
 	if (*status != PHP_PLUTOBOOK_ASSET_OK) {
 		return NULL;
 	}
@@ -332,8 +363,7 @@ static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_documen
 	close(reader);
 	plutobook_resource_data_t *result = NULL;
 	if (offset == size) {
-		const char *suffix = strrchr(path, '.');
-		const char *mime = suffix && !strcasecmp(suffix, ".svg") ? "image/svg+xml" : "";
+		const char *mime = php_plutobook_mime_from_path(path, strlen(path));
 		result = plutobook_resource_data_create_without_copy(bytes, (unsigned int)size, mime, "",
 		                                                     free, bytes);
 	}
@@ -345,15 +375,17 @@ static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_documen
 }
 
 static void php_plutobook_record_skip(php_plutobook_document *doc, const char *url,
-                                      php_plutobook_asset_status status)
+                                      php_plutobook_asset_status status, const char *detail)
 {
 	if (!doc->resource_errors) {
 		doc->resource_errors = zend_new_array(0);
 	}
 	zval entry;
-	array_init_size(&entry, 2);
+	array_init_size(&entry, 3);
 	add_assoc_string(&entry, "url", url);
 	add_assoc_string(&entry, "reason", php_plutobook_asset_reasons[status].code);
+	add_assoc_string(&entry, "detail",
+	                 *detail ? detail : php_plutobook_asset_reasons[status].description);
 	zend_hash_next_index_insert(doc->resource_errors, &entry);
 }
 
@@ -363,14 +395,16 @@ plutobook_resource_data_t *php_plutobook_fetch_asset(void *closure, const char *
 	// Volatile: both are written inside zend_try and read after a possible longjmp.
 	plutobook_resource_data_t *volatile resource = NULL;
 	volatile php_plutobook_asset_status status = PHP_PLUTOBOOK_ASSET_READ_ERROR;
+	char detail[512] = "";
 	// After a timeout, skip remaining fetches so the renderer finishes quickly.
 	if (!doc->bailed && !EG(exception) && !php_plutobook_timed_out()) {
 		zend_try
 		{
 			php_plutobook_asset_status found = PHP_PLUTOBOOK_ASSET_READ_ERROR;
-			plutobook_resource_data_t *loaded = php_plutobook_read_asset(doc, url, &found);
+			plutobook_resource_data_t *loaded =
+			    php_plutobook_read_asset(doc, url, &found, detail, sizeof(detail));
 			if (!loaded) {
-				php_plutobook_record_skip(doc, url, found);
+				php_plutobook_record_skip(doc, url, found, detail);
 			}
 			resource = loaded;
 			status = found;
@@ -383,8 +417,9 @@ plutobook_resource_data_t *php_plutobook_fetch_asset(void *closure, const char *
 	}
 	if (!resource) {
 		// PlutoBook prints this message to stderr; the document keeps the structured record.
-		plutobook_set_error_message("%s, %s: %s", PHP_PLUTOBOOK_ASSET_SKIPPED,
-		                            php_plutobook_asset_reasons[status].description, url);
+		const char *description = php_plutobook_asset_reasons[status].description;
+		plutobook_set_error_message("%s, %s%s%s%s: %s", PHP_PLUTOBOOK_ASSET_SKIPPED, description,
+		                            *detail ? " (" : "", detail, *detail ? ")" : "", url);
 	}
 	return resource;
 }

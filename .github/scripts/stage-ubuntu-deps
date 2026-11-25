@@ -2,7 +2,7 @@
 # Supply missing Ubuntu build headers and PDF tools under the checkout.
 set -euo pipefail
 if pkg-config --exists cairo-fc cairo-ft cairo-png cairo-pdf freetype2 fontconfig harfbuzz icu-uc \
-    openssl zlib libxml-2.0 && command -v pdftoppm >/dev/null; then
+    openssl zlib libxml-2.0 libcurl && command -v pdftoppm >/dev/null; then
   exit 0
 fi
 
@@ -15,7 +15,7 @@ apt=(apt-get -o "Dir::State::lists=$cache/lists" -o "Dir::Cache=$cache"
 "${apt[@]}" update
 "${apt[@]}" --download-only --no-install-recommends --yes install \
   libcairo2-dev libfreetype-dev libfontconfig-dev libharfbuzz-dev libicu-dev \
-  libssl-dev zlib1g-dev libxml2-dev poppler-utils
+  libssl-dev zlib1g-dev libxml2-dev libcurl4-openssl-dev poppler-utils
 shopt -s nullglob
 for deb in "$cache"/archives/*.deb; do dpkg-deb -x "$deb" "$prefix"; done
 

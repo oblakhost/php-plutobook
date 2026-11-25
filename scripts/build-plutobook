@@ -26,11 +26,23 @@ unpack() {
   fi
 }
 
+# A host package satisfies a dependency unless an earlier run already built a private copy.
+# The extension's remote assets need libcurl with HTTPS, so an HTTP-only host build is not enough.
+host_package() {
+  case $1 in
+    libcurl)
+      pkg-config --exists 'libcurl >= 7.68.0' &&
+        [[ " $(pkg-config --variable=supported_protocols libcurl) " == *" HTTPS "* ]]
+      ;;
+    *) pkg-config --exists "$1" ;;
+  esac
+}
+
 cmake_dependency() {
   local package=$1 archive=$2
   shift 2
   local src="$build/$package/source" obj="$build/$package/build"
-  if pkg-config --exists "$package" && [[ ! -d "$obj" ]]; then return; fi
+  if host_package "$package" && [[ ! -d "$obj" ]]; then return; fi
   unpack "$archive" "$src"
   cmake -G Ninja -S "$src" -B "$obj" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_RPATH="$prefix/lib" \
@@ -42,6 +54,7 @@ cmake_dependency() {
     expat) cp -f "$src/COPYING" "$licenses/$package/" ;;
     libturbojpeg) cp -f "$src"/{LICENSE.md,README.ijg} "$licenses/$package/" ;;
     libwebp) cp -f "$src"/{COPYING,PATENTS} "$licenses/$package/" ;;
+    libcurl) cp -f "$src/COPYING" "$licenses/$package/" ;;
   esac
 }
 
@@ -76,12 +89,26 @@ cmake_dependency libwebp libwebp-1.6.0.tar.gz -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP
   -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
   -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF
 
+# The extension's remote assets. HTTP and HTTPS only, through the host's OpenSSL and zlib.
+cmake_dependency libcurl curl-8.23.0.tar.gz -DCURL_USE_OPENSSL=ON -DCURL_DISABLE_DICT=ON \
+  -DCURL_DISABLE_FILE=ON -DCURL_DISABLE_FTP=ON -DCURL_DISABLE_GOPHER=ON -DCURL_DISABLE_IMAP=ON \
+  -DCURL_DISABLE_IPFS=ON -DCURL_DISABLE_LDAP=ON -DCURL_DISABLE_LDAPS=ON -DCURL_DISABLE_MQTT=ON \
+  -DCURL_DISABLE_POP3=ON -DCURL_DISABLE_RTSP=ON -DCURL_DISABLE_SMTP=ON -DCURL_DISABLE_TELNET=ON \
+  -DCURL_DISABLE_TFTP=ON -DCURL_DISABLE_WEBSOCKETS=ON -DCURL_ZLIB=ON -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DUSE_NGHTTP2=OFF -DUSE_LIBIDN2=OFF \
+  -DCURL_USE_LIBPSL=OFF -DCURL_USE_LIBSSH2=OFF -DENABLE_UNIX_SOCKETS=OFF -DBUILD_CURL_EXE=OFF \
+  -DBUILD_STATIC_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF \
+  -DENABLE_CURL_MANUAL=OFF -DPICKY_COMPILER=OFF
+
+# PlutoBook's own curl support stays off: the binding fetches every remote asset itself.
+# Meson link options replace LDFLAGS, so pass a packager's LDFLAGS along with the private rpath.
+read -r -a ldflags <<< "${LDFLAGS:-}"
+link_args=$(printf "'%s'," "-Wl,-rpath,$prefix/lib" ${ldflags[@]+"${ldflags[@]}"})
 meson=(python3 "$build/meson-1.9.1/meson.py")
 setup=()
 if [[ -f "$build/obj/meson-private/coredata.dat" ]]; then setup+=(--reconfigure); fi
 "${meson[@]}" setup "${setup[@]}" --prefix="$prefix" --libdir=lib --buildtype=release \
   --wrap-mode=nofallback -Ddefault_library=shared -Dcurl=disabled -Dturbojpeg=enabled \
-  -Dcpp_link_args="['-Wl,-rpath,$prefix/lib']" -Dwebp=enabled -Dtools=enabled "$build/obj" "$build/source"
+  -Dcpp_link_args="[${link_args%,}]" -Dwebp=enabled -Dtools=enabled "$build/obj" "$build/source"
 "${meson[@]}" compile -C "$build/obj" -j "$jobs"
 "${meson[@]}" install -C "$build/obj" --no-rebuild
 pkg-config --exact-version="$version" plutobook
