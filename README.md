@@ -296,6 +296,8 @@ pre-packaged binaries to `build/portable/release/`, one per PHP minor version:
 `plutobook.so`, with `LICENSE`, `THIRD_PARTY.md` and the bundled libraries'
 `licenses/`. PIE names Linux binaries after the C library they need. PIE cannot tell
 EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only.
+`php_plutobook-1.2.0-mpl-sources.tar.xz` holds the source of the MPL-covered code
+in the binaries, as [THIRD_PARTY.md](THIRD_PARTY.md) describes.
 
 Each module contains PlutoBook with the static font variations fix (plutobook#84),
 Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,

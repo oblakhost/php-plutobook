@@ -425,6 +425,68 @@ os.replace(out + ".tmp", out)
 PY
 }
 
+# The Source Code Form of the MPL-covered code in the modules, for each release: the
+# patched PlutoBook tree as built (with its wraps and patch files), the two Cairo files its
+# Cairo patch changes, this project's patches, and where the unmodified sources come from.
+release_sources() {
+  local out="/work/release/php_plutobook-${release}-mpl-sources.tar.xz"
+  mkdir -p /work/release
+  grep -E '/(8df624e11bd55d8e4f276ebf559335aa29fb926c|cairo-1\.18\.4\.tar\.xz)$' \
+    "$root/tools/sources.sha256" > "$work/mpl-upstream.txt"
+  python3 - "$out" "$work/plutobook/source" "$root/tools/patches" "$work/mpl-upstream.txt" <<'PY'
+import io
+import os
+import sys
+import tarfile
+
+out, source, patches, upstream = sys.argv[1:]
+top = os.path.basename(out)[: -len(".tar.xz")]
+readme = f"""MPL-covered source code in the php-plutobook portable modules
+
+plutobook-0.20.0/  PlutoBook 0.20.0 (MPL-2.0) as built, with
+                   patches/plutobook-0.20.0-static-font-variations.patch applied.
+                   subprojects/ holds the Meson wraps and patch files used for the
+                   bundled libraries, including Cairo's font options fix in
+                   subprojects/packagefiles/cairo-fix-font-options-leaks.patch.
+cairo-1.18.4/      The Cairo files that patch changes (Cairo is used under MPL-1.1).
+                   Every other Cairo file is unmodified.
+patches/           This project's patches to PlutoBook and Fontconfig.
+
+Unmodified upstream sources (SHA-256 and URL):
+{open(upstream).read()}"""
+
+
+def add_bytes(archive, name, data):
+    info = tarfile.TarInfo(f"{top}/{name}")
+    info.size, info.mode, info.mtime = len(data), 0o644, 0
+    archive.addfile(info, io.BytesIO(data))
+
+
+def add_file(archive, path, name):
+    with open(path, "rb") as source_file:
+        add_bytes(archive, name, source_file.read())
+
+
+with tarfile.open(out + ".tmp", "w:xz") as archive:
+    add_bytes(archive, "SOURCES.txt", readme.encode())
+    for directory, subdirectories, files in os.walk(source):
+        relative = os.path.relpath(directory, source)
+        # Extracted subprojects and the download cache are upstream archives, not PlutoBook.
+        if relative == "subprojects":
+            subdirectories[:] = ["packagefiles"]
+        subdirectories.sort()
+        for name in sorted(files):
+            path = os.path.join(directory, name)
+            add_file(archive, path, os.path.normpath(os.path.join("plutobook-0.20.0", relative, name)))
+    cairo = os.path.join(source, "subprojects", "cairo-1.18.4")
+    for name in ("src/cairo-surface-wrapper.c", "src/cairo-scaled-font-subsets.c"):
+        add_file(archive, os.path.join(cairo, name), f"cairo-1.18.4/{name}")
+    for name in sorted(os.listdir(patches)):
+        add_file(archive, os.path.join(patches, name), f"patches/{name}")
+os.replace(out + ".tmp", out)
+PY
+}
+
 pinned=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
 if ((${#versions[@]} == 0)); then mapfile -t versions <<<"$pinned"; fi
 part stack_plutobook "$root"/tools/patches/*.patch "$root"/tools/portable/wraps/*.wrap \
@@ -437,6 +499,7 @@ step test-fonts "$root/scripts/stage-test-fonts" "$stack/fonts"
 rm -rf "$dist/licenses" /work/release
 find "$dist" -mindepth 1 -maxdepth 1 ! -name linux ! -name el8 -exec rm -rf {} +
 cp -R "$stack/licenses" "$dist/licenses"
+if [[ -n $release ]]; then release_sources; fi
 for version in "${versions[@]}"; do
   step "php-$version" "$root/scripts/build-php" "$version" nts
   for variant in linux el8; do
