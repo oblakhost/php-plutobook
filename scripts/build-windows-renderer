@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Build the shared renderer once for every Windows x64 PHP ABI.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "$root"
+work="$root/build/windows-renderer"
+mkdir -p "$work"
+exec 9>"$work/build.lock"
+flock 9
+inputs=(8df624e11bd55d8e4f276ebf559335aa29fb926c meson-1.12.1.tar.gz
+  cairo-1.18.4.tar.xz pixman-0.46.4.tar.gz libpng-1.6.59.tar.gz libpng_1.6.59-1_patch.zip
+  zlib-1.3.2.tar.xz zlib_1.3.2-1_patch.zip freetype-2.14.3.tar.xz fontconfig-2.18.3.tar.xz
+  harfbuzz-13.0.1.tar.xz expat-2.8.2.tar.xz expat_2.8.2-1_patch.zip icu4c-78.2-sources.tgz
+  icu_78.2-1_patch.zip libjpeg-turbo-3.1.4.1.tar.gz libjpeg-turbo_3.1.4.1-2_patch.zip
+  libwebp-1.6.0.tar.gz libwebp_1.6.0-1_patch.zip)
+for name in "${inputs[@]}"; do
+  scripts/fetch-source "$name" >/dev/null
+done
+recipe=tools/windows-renderer
+engine=${CONTAINER_ENGINE:-docker}
+image="php-plutobook-mingw:$(sha256sum "$recipe/Containerfile" | cut -c1-16)"
+if ! "$engine" image inspect "$image" >/dev/null 2>&1; then
+  "$engine" build -t "$image" -f "$recipe/Containerfile" "$recipe"
+fi
+key=$(cat scripts/build-windows-renderer "$recipe"/* tools/portable/wraps/*.wrap tools/patches/*.patch \
+  tools/portable/icu-keep.txt tools/sources.sha256 | sha256sum | cut -c1-16)
+if [[ ! -f $work/$key/renderer.zip ]]; then
+  mkdir -p "$work/$key"
+  "$engine" run --rm --network=none --security-opt label=disable --user "$(id -u):$(id -g)" \
+    -v "$root:/src:ro" -v "$work/$key:/work" -e JOBS -w /work "$image" \
+    bash "/src/$recipe/build" "${inputs[@]}"
+fi
+cp -f "$work/$key/renderer.zip" "$work/renderer.zip.tmp"
+mv -f "$work/renderer.zip.tmp" "$work/renderer.zip"
+echo "Built $work/renderer.zip"

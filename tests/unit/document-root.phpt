@@ -4,6 +4,7 @@ documentRoot makes one directory the URL root for local assets, like a web serve
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 use PlutoBook\Document;
 $dir = __DIR__ . '/document-root-' . uniqid();
 mkdir("$dir/release/public/assets", 0777, true);
@@ -13,31 +14,46 @@ $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAEElEQVR4nG
 file_put_contents("$dir/release/public/assets/dot.png", $png);
 file_put_contents("$dir/release/public/invoices/2026/local.png", $png);
 file_put_contents("$dir/outside/secret.png", $png);
-symlink("$dir/release", "$dir/current");
-$root = "file://$dir/current/public/";
-$base = "file://$dir/current/public/invoices/2026/";
+$windows = PHP_OS_FAMILY === 'Windows';
+$served = "$dir/release";
+if (!$windows) {
+    symlink($served, "$dir/current");
+    $served = "$dir/current";
+}
+$root = plutobookTestFileUrl("$served/public/");
+$base = $root . 'invoices/2026/';
+$file = plutobookTestFileUrl("$dir/release/public/assets/dot.png");
+$fixtureUrl = plutobookTestFileUrl($dir);
 $doc = new Document();
-$show = function (string $src, ?string $base, ?string $root) use ($doc, $dir): void {
+$show = function (string $src, ?string $base, ?string $root, ?array $expectedError = null) use ($doc, $fixtureUrl): void {
     $doc->loadHtml("<img src=\"$src\">", $base, documentRoot: $root);
     $loaded = str_contains($doc->toPdf(), '/Subtype /Image');
-    $errors = array_map(fn ($e) => "$e[reason] $e[url]", $doc->getResourceErrors());
-    $line = sprintf("%-42s %s\n", str_replace($dir, 'DIR', $src), $loaded ? 'loaded' : implode(', ', $errors));
-    echo str_replace($dir, 'DIR', $line);
+    $errors = [];
+    foreach ($doc->getResourceErrors() as ['reason' => $reason, 'url' => $url]) {
+        $errors[] = [$reason, $url] === $expectedError ? 'rejected at expected URL' : "$reason $url";
+    }
+    $summary = $loaded ? 'loaded' : implode(', ', $errors);
+    printf("%-42s %s\n", str_replace($fixtureUrl, 'file://DIR', $src), str_replace($fixtureUrl, 'file://DIR', $summary));
 };
 echo "-- documentRoot with a baseUrl below it\n";
 foreach (['/assets/dot.png', '../../assets/dot.png', 'local.png', '/invoices/2026/local.png',
-          '../../../../outside/secret.png', '/assets/..%2F..%2F..%2Foutside/secret.png',
-          "file://$dir/release/public/assets/dot.png"] as $src) {
+          '../../../../outside/secret.png', '/assets/..%2F..%2F..%2Foutside/secret.png'] as $src) {
     $show($src, $base, $root);
 }
+// A literal drive colon is invalid in the virtual path on Windows.
+$show($file, $base, $root, [$windows ? 'invalid-url' : 'missing', $file]);
 echo "-- documentRoot alone\n";
 $show('/assets/dot.png', null, $root);
 $show('assets/dot.png', null, $root);
 echo "-- baseUrl alone keeps filesystem paths\n";
-$show('/assets/dot.png', "file://$dir/current/public/", null);
-$show("file://$dir/release/public/assets/dot.png", "file://$dir/current/public/", null);
+// A root-relative URL inherits the base drive on Windows. The asset is outside the pinned directory.
+$expectedError = $windows
+    ? ['outside-base', plutobookTestFileUrl(substr($dir, 0, 2) . '/assets/dot.png')]
+    : ['missing', 'file:///assets/dot.png'];
+$show('/assets/dot.png', $root, null, $expectedError);
+$show($file, $root, null);
 echo "-- validation\n";
-foreach ([["file://$dir/outside/", $root], [$base, "file://$dir/missing/"], [$base, "file://$dir/current/public"]] as [$b, $r]) {
+foreach ([[$fixtureUrl . '/outside/', $root], [$base, $fixtureUrl . '/missing/'], [$base, rtrim($root, '/')]] as [$b, $r]) {
     try {
         $doc->loadHtml('text', $b, documentRoot: $r);
         echo "accepted\n";
@@ -49,7 +65,15 @@ foreach ([["file://$dir/outside/", $root], [$base, "file://$dir/missing/"], [$ba
 --CLEAN--
 <?php
 foreach (glob(__DIR__ . '/document-root-*') as $dir) {
-    exec('rm -rf ' . escapeshellarg($dir));
+    if (is_link("$dir/current")) unlink("$dir/current");
+    foreach (['outside/secret.png', 'release/public/assets/dot.png', 'release/public/invoices/2026/local.png'] as $file) {
+        if (is_file("$dir/$file")) unlink("$dir/$file");
+    }
+    foreach (['outside', 'release/public/invoices/2026', 'release/public/invoices', 'release/public/assets',
+              'release/public', 'release'] as $folder) {
+        if (is_dir("$dir/$folder")) rmdir("$dir/$folder");
+    }
+    rmdir($dir);
 }
 ?>
 --EXPECT--
@@ -60,12 +84,12 @@ local.png                                  loaded
 /invoices/2026/local.png                   loaded
 ../../../../outside/secret.png             missing file:///outside/secret.png
 /assets/..%2F..%2F..%2Foutside/secret.png  outside-base file:///assets/..%2F..%2F..%2Foutside/secret.png
-file://DIR/release/public/assets/dot.png   missing file://DIR/release/public/assets/dot.png
+file://DIR/release/public/assets/dot.png   rejected at expected URL
 -- documentRoot alone
 /assets/dot.png                            loaded
 assets/dot.png                             loaded
 -- baseUrl alone keeps filesystem paths
-/assets/dot.png                            missing file:///assets/dot.png
+/assets/dot.png                            rejected at expected URL
 file://DIR/release/public/assets/dot.png   loaded
 -- validation
 PlutoBook\Document::loadHtml(): Argument #2 ($baseUrl) must be a directory inside documentRoot

@@ -5,7 +5,12 @@
 #include "main/fopen_wrappers.h"
 #include <errno.h>
 #include <fcntl.h>
+#ifdef PHP_WIN32
+#include "assets_win32.h"
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 // Reason codes are public API through Document::getResourceErrors(); keep them stable.
 static const struct {
@@ -98,11 +103,15 @@ static php_plutobook_asset_status php_plutobook_decode_file_url(const char *url,
 static php_plutobook_asset_status php_plutobook_resolve_file(const char *url, const char *root,
                                                              char resolved[MAXPATHLEN])
 {
-	char decoded[MAXPATHLEN], joined[MAXPATHLEN];
+	char decoded[MAXPATHLEN];
 	php_plutobook_asset_status status = php_plutobook_decode_file_url(url, decoded);
 	if (status != PHP_PLUTOBOOK_ASSET_OK) {
 		return status;
 	}
+#ifdef PHP_WIN32
+	return php_plutobook_win_path(decoded, root, resolved);
+#else
+	char joined[MAXPATHLEN];
 	const char *path = decoded;
 	if (root) {
 		int length =
@@ -117,8 +126,10 @@ static php_plutobook_asset_status php_plutobook_resolve_file(const char *url, co
 	}
 	return php_check_open_basedir_ex(resolved, 0) == 0 ? PHP_PLUTOBOOK_ASSET_OK
 	                                                   : PHP_PLUTOBOOK_ASSET_OPEN_BASEDIR;
+#endif
 }
 
+#ifndef PHP_WIN32
 static php_plutobook_asset_status php_plutobook_open_error(int error)
 {
 	switch (error) {
@@ -184,7 +195,19 @@ static int php_plutobook_open_directory(const char *resolved)
 	return directory;
 }
 
-zend_string *php_plutobook_asset_root(zend_string *base, int *directory, uint32_t arg)
+#endif
+
+void php_plutobook_close_directory(php_plutobook_directory directory)
+{
+#ifdef PHP_WIN32
+	CloseHandle(directory);
+#else
+	close(directory);
+#endif
+}
+
+zend_string *php_plutobook_asset_root(zend_string *base, php_plutobook_directory *directory,
+                                      uint32_t arg)
 {
 	const char *url = ZSTR_VAL(base);
 	char resolved[MAXPATHLEN];
@@ -192,13 +215,29 @@ zend_string *php_plutobook_asset_root(zend_string *base, int *directory, uint32_
 	    url[ZSTR_LEN(base) - 1] == '/' &&
 	    php_plutobook_resolve_file(url, NULL, resolved) == PHP_PLUTOBOOK_ASSET_OK) {
 		*directory = php_plutobook_open_directory(resolved);
-		if (*directory >= 0) {
+		if (*directory != PHP_PLUTOBOOK_INVALID_DIRECTORY) {
 			return zend_string_init(resolved, strlen(resolved), 0);
 		}
 	}
 	zend_argument_value_error(
 	    arg, "must be a file:/// URL ending in / for an accessible local directory");
 	return NULL;
+}
+
+// A normalized drive root or filesystem root ends in a slash. Other roots must match
+// a whole path component. Return the suffix without its leading separator.
+const char *php_plutobook_relative_path(const zend_string *root, const char *path)
+{
+	const size_t length = ZSTR_LEN(root) - (ZSTR_VAL(root)[ZSTR_LEN(root) - 1] == '/');
+#ifdef PHP_WIN32
+	int comparison = strncasecmp(path, ZSTR_VAL(root), length);
+#else
+	int comparison = strncmp(path, ZSTR_VAL(root), length);
+#endif
+	if (comparison || (path[length] && path[length] != '/')) {
+		return NULL;
+	}
+	return path + length + (path[length] == '/');
 }
 
 // The base URL PlutoBook sees in documentRoot mode: the base directory's path below the
@@ -208,15 +247,14 @@ zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base)
 	if (!base) {
 		return zend_string_init("file:///", sizeof("file:///") - 1, 0);
 	}
-	int directory = -1;
+	php_plutobook_directory directory = PHP_PLUTOBOOK_INVALID_DIRECTORY;
 	zend_string *resolved = php_plutobook_asset_root(base, &directory, 2);
 	if (!resolved) {
 		return NULL;
 	}
-	close(directory);
-	const size_t root_len = ZSTR_LEN(root) == 1 ? 0 : ZSTR_LEN(root);
-	const char *relative = ZSTR_VAL(resolved) + root_len;
-	if (strncmp(ZSTR_VAL(resolved), ZSTR_VAL(root), root_len) || (*relative && *relative != '/')) {
+	php_plutobook_close_directory(directory);
+	const char *relative = php_plutobook_relative_path(root, ZSTR_VAL(resolved));
+	if (!relative) {
 		zend_string_release(resolved);
 		zend_argument_value_error(2, "must be a directory inside documentRoot");
 		return NULL;
@@ -224,7 +262,7 @@ zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base)
 	smart_str url = {0};
 	smart_str_appends(&url, "file:///");
 	while (*relative) {
-		size_t length = strcspn(++relative, "/");
+		size_t length = strcspn(relative, "/");
 		if (length) {
 			zend_string *segment = php_raw_url_encode(relative, length);
 			smart_str_append(&url, segment);
@@ -232,6 +270,9 @@ zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base)
 			zend_string_release(segment);
 		}
 		relative += length;
+		if (*relative) {
+			relative++;
+		}
 	}
 	zend_string_release(resolved);
 	return smart_str_extract(&url);
@@ -248,6 +289,7 @@ static php_plutobook_asset_status php_plutobook_scheme(const char *url)
 	return PHP_PLUTOBOOK_ASSET_UNSUPPORTED_SCHEME;
 }
 
+#ifndef PHP_WIN32
 static php_plutobook_asset_status php_plutobook_check_file(const struct stat *st)
 {
 	if (!S_ISREG(st->st_mode)) {
@@ -301,6 +343,24 @@ static php_plutobook_asset_status php_plutobook_open_leaf(int parent, const char
 	return PHP_PLUTOBOOK_ASSET_OK;
 }
 
+static php_plutobook_asset_status
+php_plutobook_open_file(php_plutobook_document *doc, const char *path, size_t *size, int *reader)
+{
+	const char *relative = php_plutobook_relative_path(doc->asset_root, path);
+	if (!relative || (!*relative && ZSTR_LEN(doc->asset_root) != 1)) {
+		return PHP_PLUTOBOOK_ASSET_OUTSIDE_BASE;
+	}
+	const char *leaf = NULL;
+	int parent = php_plutobook_open_parent(doc->asset_dir, relative, &leaf);
+	if (parent < 0) {
+		return php_plutobook_open_error(errno);
+	}
+	php_plutobook_asset_status status = php_plutobook_open_leaf(parent, leaf, size, reader);
+	close(parent);
+	return status;
+}
+#endif
+
 static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_document *doc,
                                                            const char *url,
                                                            php_plutobook_asset_status *status,
@@ -323,26 +383,9 @@ static plutobook_resource_data_t *php_plutobook_read_asset(php_plutobook_documen
 	if (*status != PHP_PLUTOBOOK_ASSET_OK) {
 		return NULL;
 	}
-	const size_t root_len = ZSTR_LEN(doc->asset_root);
-	if (strncmp(path, ZSTR_VAL(doc->asset_root), root_len) ||
-	    (root_len != 1 && path[root_len] != '/')) {
-		*status = PHP_PLUTOBOOK_ASSET_OUTSIDE_BASE;
-		return NULL;
-	}
-	const char *relative = path + root_len;
-	if (*relative == '/') {
-		relative++;
-	}
-	const char *leaf = NULL;
-	int parent = php_plutobook_open_parent(doc->asset_dir, relative, &leaf);
-	if (parent < 0) {
-		*status = php_plutobook_open_error(errno);
-		return NULL;
-	}
 	size_t size = 0;
 	int reader = -1;
-	*status = php_plutobook_open_leaf(parent, leaf, &size, &reader);
-	close(parent);
+	*status = php_plutobook_open_file(doc, path, &size, &reader);
 	if (*status != PHP_PLUTOBOOK_ASSET_OK) {
 		return NULL;
 	}

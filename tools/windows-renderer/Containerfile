@@ -1,0 +1,9 @@
+# Native tools generate ICU data. MinGW-w64 targets Windows x86-64 with POSIX threads.
+FROM docker.io/library/debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential g++-mingw-w64-x86-64-posix gperf icu-devtools nasm ninja-build patch pkg-config \
+        python3 xz-utils bzip2 ca-certificates && rm -rf /var/lib/apt/lists/*
+# The C++/thread runtimes linked into the DLL come from these exact target packages.
+RUN test "$(dpkg-query -W -f='${Version}' g++-mingw-w64-x86-64-posix)" = '14.2.0-19+27+b1' \
+ && test "$(dpkg-query -W -f='${Version}' binutils-mingw-w64-x86-64)" = '2.44-3+12+b1' \
+ && test "$(dpkg-query -W -f='${Version}' mingw-w64-x86-64-dev)" = '12.0.0-5'

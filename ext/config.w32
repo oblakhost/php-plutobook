@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: Apache-2.0
+ARG_WITH("plutobook", "PlutoBook HTML-to-PDF support", "no");
+ARG_WITH("plutobook-static-curl", "Link the release's static Schannel libcurl and zlib", "no");
+
+if (PHP_PLUTOBOOK != "no") {
+	var staticCurl = PHP_PLUTOBOOK_STATIC_CURL != "no";
+	if (!CHECK_HEADER_ADD_INCLUDE("plutobook.h", "CFLAGS_PLUTOBOOK") ||
+			!CHECK_HEADER_ADD_INCLUDE("curl/curl.h", "CFLAGS_PLUTOBOOK") ||
+			!CHECK_LIB("plutobook.lib", "plutobook") ||
+			!CHECK_LIB(staticCurl ? "libcurl_a.lib" : "libcurl_imp.lib;libcurl.lib", "plutobook") ||
+			!CHECK_LIB("ws2_32.lib", "plutobook") ||
+			!CHECK_LIB("ntdll.lib", "plutobook")) {
+		ERROR("PlutoBook requires the PlutoBook and libcurl headers and import libraries, and the Windows SDK.");
+	}
+	if (staticCurl) {
+		if (!CHECK_LIB("zlib_a.lib", "plutobook")) {
+			ERROR("The Schannel libcurl build requires static zlib.");
+		}
+		ADD_FLAG("CFLAGS_PLUTOBOOK", "/DCURL_STATICLIB");
+		ADD_FLAG("LIBS_PLUTOBOOK", "crypt32.lib secur32.lib bcrypt.lib iphlpapi.lib normaliz.lib advapi32.lib");
+	}
+	EXTENSION("plutobook", "src\\document.c src\\options.c src\\assets.c src\\assets_win32.c src\\network.c", true);
+}

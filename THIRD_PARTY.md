@@ -1,6 +1,6 @@
 # Third-party notices
 
-The php-pdf binding and its original project files use the Apache License 2.0.
+The php-plutobook binding and its original project files use the Apache License 2.0.
 The binding links to PlutoBook as a separate shared library through its public C API.
 
 ## PlutoBook
@@ -25,7 +25,7 @@ libraries and fonts actually included in a binary distribution.
 
 ## libcurl
 
-The binding links to libcurl as a separate shared library for remote assets.
+The binding uses libcurl for remote assets.
 libcurl uses the curl license, an MIT/X-derived permissive license. Distribution
 builds link the system libcurl. When the host lacks one with HTTPS,
 `scripts/build-plutobook` downloads curl 8.23.0 into the private cache and
@@ -33,7 +33,7 @@ installs its `COPYING` file under the private prefix's `share/licenses/libcurl`.
 Binary distributions that bundle libcurl must include that notice.
 [Upstream license](https://curl.se/docs/copyright.html)
 
-## Portable binaries and packages
+## Portable Linux binaries and packages
 
 The Linux modules from `scripts/build-portable`, the PIE pre-packaged binaries and
 the deb and rpm packages link the following statically. Each ships their license
@@ -70,6 +70,29 @@ attaches `php_plutobook-VERSION-mpl-sources.tar.xz`: the patched PlutoBook sourc
 as built, the changed Cairo files, the patches, and the pinned upstream archives
 for everything unmodified. The modified files remain available under their MPL
 versions; the binding's own files stay Apache-2.0.
+
+## Windows x64 ZIPs
+
+The PIE release ZIP contains the PHP extension, the separate PlutoBook 0.20.0
+renderer DLL and two DejaVu Sans 2.37 fonts (regular and bold). The extension
+statically links libcurl 8.23.0 under the curl license and zlib 1.3.2 under the
+zlib license. Windows supplies Schannel for TLS. The fonts ship with their
+DejaVu and Bitstream Vera notices and author credits under `licenses/dejavu/`.
+The libcurl and zlib notices are under `licenses/libcurl/` and `licenses/zlib/`.
+
+The release renderer is built from the pinned PlutoBook source with its Cairo
+font-options patch and our static-font-variations patch. The ZIP includes the
+renderer and dependency notices under `licenses/renderer/` and the applied
+patches under `patches/renderer/`. The corresponding
+MPL-covered source is in the release's `php_plutobook-VERSION-mpl-sources.tar.xz`.
+
+The private Windows development ZIP includes the same renderer, the checkout's
+source-built PHP CLI and OpenSSL extension, OpenSSL 3.5.9 (Apache-2.0),
+libcurl 8.23.0 and zlib 1.3.2. The upstream prebuilt PlutoBook 0.20.0 Windows
+archive supplies the C header used by the build. PHP's
+redistribution notices and the OpenSSL license are included under `licenses/`.
+Each ZIP carries the source URLs and SHA-256 pins in `sources.sha256` and
+`renderer-sources.sha256`.
 
 The PHP sources, test client, and development tools are downloaded separately
 for local builds. Each retains its upstream license.

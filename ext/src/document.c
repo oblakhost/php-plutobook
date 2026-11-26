@@ -7,10 +7,11 @@
 #include "main/fopen_wrappers.h"
 #include "../plutobook_arginfo.h"
 #include <errno.h>
-#include <unistd.h>
 
-#ifdef ZTS
-#error "This release supports NTS PHP builds only"
+#ifdef PHP_WIN32
+#include "main/SAPI.h"
+#elif defined(ZTS)
+#error "Unix builds require NTS PHP"
 #endif
 
 ZEND_DECLARE_MODULE_GLOBALS(plutobook)
@@ -122,7 +123,7 @@ static zend_object *php_plutobook_create_object(zend_class_entry *ce)
 	zend_object_std_init(&doc->std, ce);
 	object_properties_init(&doc->std, ce);
 	doc->std.handlers = &php_plutobook_handlers;
-	doc->asset_dir = -1;
+	doc->asset_dir = PHP_PLUTOBOOK_INVALID_DIRECTORY;
 	return &doc->std;
 }
 
@@ -133,7 +134,7 @@ static void php_plutobook_free_object(zend_object *object)
 		plutobook_destroy(doc->book);
 	}
 	if (doc->asset_root) {
-		close(doc->asset_dir);
+		php_plutobook_close_directory(doc->asset_dir);
 		zend_string_release(doc->asset_root);
 	}
 	if (doc->resource_errors) {
@@ -260,13 +261,13 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 	// The asset root confines file reads. With documentRoot it is also the virtual URL root,
 	// and PlutoBook resolves URLs against the base directory's path below it.
 	const bool local_base = base && !remote_base;
-	int directory = -1;
+	php_plutobook_directory directory = PHP_PLUTOBOOK_INVALID_DIRECTORY;
 	zend_string *root = NULL, *virtual_base = NULL;
 	if (document_root) {
 		root = php_plutobook_asset_root(document_root, &directory, 4);
 		virtual_base = root ? php_plutobook_virtual_base(root, base) : NULL;
 		if (root && !virtual_base) {
-			close(directory);
+			php_plutobook_close_directory(directory);
 			zend_string_release(root);
 			root = NULL;
 		}
@@ -280,7 +281,7 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 		RETURN_THROWS();
 	}
 	if (doc->asset_root) {
-		close(doc->asset_dir);
+		php_plutobook_close_directory(doc->asset_dir);
 		zend_string_release(doc->asset_root);
 	}
 	doc->asset_root = root;
@@ -310,7 +311,7 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 		zend_bailout();
 	}
 	if (php_plutobook_timed_out()) {
-		zend_timeout();
+		php_plutobook_raise_timeout();
 	}
 	if (!doc->loaded) {
 		php_plutobook_fail_because("PlutoBook could not load the HTML document",
@@ -417,7 +418,7 @@ static bool php_plutobook_render(php_plutobook_document *doc, php_plutobook_outp
 	// letting PHP's hard timeout kill the process after a long uninterruptible render.
 	if (php_plutobook_timed_out()) {
 		smart_str_free(&out->bytes);
-		zend_timeout();
+		php_plutobook_raise_timeout();
 	}
 	// PlutoBook 0.20.0 can return true after Cairo reports a callback error.
 	if (!rendered || out->failed || EG(exception)) {
@@ -505,8 +506,64 @@ PHP_METHOD(PlutoBook_Document, getResourceErrors)
 	RETURN_ARR(zend_array_dup(doc->resource_errors));
 }
 
+#ifdef PHP_WIN32
+// PIE installs supplementary files next to the PHP runtime. A SAPI host executable
+// (e.g. Apache) may live elsewhere, so locate the DLL that exports sapi_module.
+static void php_plutobook_set_packaged_fonts(void)
+{
+	if (getenv("FONTCONFIG_FILE") || getenv("FONTCONFIG_PATH")) {
+		return;
+	}
+	HMODULE runtime;
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+	                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	                        (LPCWSTR)&sapi_module, &runtime)) {
+		return;
+	}
+	wchar_t path[MAXPATHLEN];
+	DWORD length = GetModuleFileNameW(runtime, path, MAXPATHLEN);
+	if (!length || length >= MAXPATHLEN) {
+		return;
+	}
+	const wchar_t suffix[] = L"extras\\plutobook\\fonts.conf";
+	wchar_t *name = wcsrchr(path, L'\\');
+	if (!name || name - path + 1 + sizeof(suffix) / sizeof(*suffix) > MAXPATHLEN) {
+		return;
+	}
+	memcpy(name + 1, suffix, sizeof(suffix));
+	DWORD attributes = GetFileAttributesW(path);
+	if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+		return;
+	}
+	*wcsrchr(path, L'\\') = L'\0';
+	// Fontconfig uses ANSI filesystem APIs on Windows. The short path also works for
+	// names outside the system code page on volumes that provide 8.3 aliases.
+	wchar_t short_path[MAXPATHLEN];
+	length = GetShortPathNameW(path, short_path, MAXPATHLEN);
+	const wchar_t *config = length && length < MAXPATHLEN ? short_path : path;
+	char directory[MAXPATHLEN];
+	BOOL substituted = FALSE;
+	if (WideCharToMultiByte(CP_ACP, 0, config, -1, directory, sizeof(directory), NULL,
+	                        GetACP() == CP_UTF8 ? NULL : &substituted) &&
+	    !substituted) {
+		plutobook_set_fontconfig_path(directory);
+	}
+}
+#endif
+
+static PHP_GINIT_FUNCTION(plutobook)
+{
+#if defined(COMPILE_DL_PLUTOBOOK) && defined(ZTS)
+	ZEND_TSRMLS_CACHE_UPDATE();
+#endif
+	memset(plutobook_globals, 0, sizeof(*plutobook_globals));
+}
+
 PHP_MINIT_FUNCTION(plutobook)
 {
+#ifdef PHP_WIN32
+	php_plutobook_set_packaged_fonts();
+#endif
 	REGISTER_INI_ENTRIES();
 	if (!php_plutobook_network_startup()) {
 		UNREGISTER_INI_ENTRIES();
@@ -550,11 +607,14 @@ zend_module_entry plutobook_module_entry = {STANDARD_MODULE_HEADER,
                                             PHP_MINFO(plutobook),
                                             PHP_PLUTOBOOK_VERSION,
                                             PHP_MODULE_GLOBALS(plutobook),
-                                            NULL,
+                                            PHP_GINIT(plutobook),
                                             NULL,
                                             NULL,
                                             STANDARD_MODULE_PROPERTIES_EX};
 
 #ifdef COMPILE_DL_PLUTOBOOK
+#ifdef ZTS
+ZEND_TSRMLS_CACHE_DEFINE()
+#endif
 ZEND_GET_MODULE(plutobook)
 #endif

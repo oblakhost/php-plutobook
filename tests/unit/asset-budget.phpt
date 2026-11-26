@@ -4,6 +4,7 @@ plutobook.max_total_asset_size bounds the asset bytes one document loads, per lo
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 use PlutoBook\Document;
 $dir = __DIR__ . '/asset-budget-' . uniqid();
 mkdir($dir);
@@ -15,7 +16,7 @@ $size = strlen($png);
 $doc = new Document();
 $skipped = function () use ($doc, $dir): string {
     // Images are fetched in document order while the renderer builds its boxes.
-    $doc->loadHtml('<img src="a.png"><img src="b.png"><img src="c.png">', "file://$dir/");
+    $doc->loadHtml('<img src="a.png"><img src="b.png"><img src="c.png">', plutobookTestFileUrl("$dir/"));
     $doc->toPdf();
     $errors = array_map(fn (array $e): string => basename($e['url']) . " $e[reason] ($e[detail])", $doc->getResourceErrors());
     return $errors ? implode(', ', $errors) : 'none';
@@ -33,7 +34,8 @@ foreach (['-1', 'abc'] as $invalid) {
 --CLEAN--
 <?php
 foreach (glob(__DIR__ . '/asset-budget-*') as $dir) {
-    exec('rm -rf ' . escapeshellarg($dir));
+    foreach (glob("$dir/*.png") as $file) unlink($file);
+    rmdir($dir);
 }
 ?>
 --EXPECTF--

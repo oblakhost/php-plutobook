@@ -87,7 +87,22 @@ A successful push to master then calls the reusable release workflow
 2. **linux** runs `scripts/build-portable`, `scripts/build-packages` and
    `scripts/test-packages` with `PLUTOBOOK_RELEASE_VERSION` set to that version,
    and uploads the PIE archives, the MPL sources and the packages.
-3. **publish** checks that every asset carries the version, imports the
+3. **renderer** runs `scripts/build-windows-renderer` in the Linux job's private
+   MinGW-w64 build environment. It builds the Windows x64 renderer once from the
+   pinned graphics sources and patches and supplies the same DLL, header, and
+   notices to all Windows jobs.
+4. **windows** builds a source-matched PHP CLI and extension for each pinned
+   PHP minor, in both NTS and TS for x64. PHP 8.2 and 8.3 use the VS2019 v142
+   compiler on `windows-2022`, PHP 8.4 and 8.5 use VS2022 on the same image,
+   and PHP 8.6 uses `windows-2025-vs2026`. Each job runs the PHPT suite, renders
+   the invoice, verifies the PIE package against its PHP ABI and uploads its ZIP
+   and invoice for the publish job. GitHub lists the installed toolsets in its
+   [Windows Server 2022 image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md)
+   and [Windows Server 2025 with VS2026 image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-VS2026-Readme.md).
+5. **publish** inspects each Windows invoice with Poppler and checks the exact
+   set of Linux and Windows asset names against the version and PHP pins. The
+   Windows ZIPs follow `php_plutobook-VERSION-MAJOR.MINOR-THREAD-COMPILER-x86_64.zip`,
+   for example `php_plutobook-1.2.0-8.3-nts-vs16-x86_64.zip`. It imports the
    organization's `OBLAKBOT_GPG_KEY`, and runs semantic-release. The version
    plugin stops the release if the version changed since the build. Prepare steps
    then add the PIE source archive (`scripts/release-source.mjs`) and sign

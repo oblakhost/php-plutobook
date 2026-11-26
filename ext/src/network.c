@@ -3,11 +3,22 @@
 // PlutoBook's built-in fetcher, so every request follows the document's policy:
 // http/https only, allowed hosts on every hop, no internal addresses, bounded size and time.
 #include "binding.h"
-#include <arpa/inet.h>
 #include <curl/curl.h>
+#ifdef PHP_WIN32
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <time.h>
+#endif
+
+#if PLUTOBOOK_VERSION != PLUTOBOOK_VERSION_ENCODE(0, 20, 0)
+#error "PlutoBook 0.20.0 is required"
+#endif
+#if LIBCURL_VERSION_NUM < 0x074400
+#error "libcurl 7.68.0 or newer is required"
+#endif
 
 #define PHP_PLUTOBOOK_USER_AGENT "php-plutobook/" PHP_PLUTOBOOK_VERSION
 
@@ -234,7 +245,12 @@ static curl_socket_t php_plutobook_open_socket(void *closure, curlsocktype purpo
 		download->blocked = true;
 		return CURL_SOCKET_BAD;
 	}
+#ifdef PHP_WIN32
+	return WSASocketW(address->family, address->socktype, address->protocol, NULL, 0,
+	                  WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT);
+#else
 	return socket(address->family, address->socktype | SOCK_CLOEXEC, address->protocol);
+#endif
 }
 
 // Decoded body bytes count toward the limit, so compressed responses cannot exceed it either.
@@ -273,9 +289,13 @@ static int php_plutobook_progress(void *closure, curl_off_t download_total, curl
 
 static int64_t php_plutobook_now_ms(void)
 {
+#ifdef PHP_WIN32
+	return (int64_t)GetTickCount64();
+#else
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+#endif
 }
 
 // Check the scheme, the host allowlist and https downgrades for a request or redirect target.
@@ -334,6 +354,10 @@ static void php_plutobook_configure(CURL *curl, const char *target,
 	curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
 	if (ca_file && *ca_file) {
 		curl_easy_setopt(curl, CURLOPT_CAINFO, ca_file);
+#if defined(PHP_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+	} else {
+		curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
 	}
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, timeout_ms);

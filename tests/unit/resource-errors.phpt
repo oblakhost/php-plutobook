@@ -4,6 +4,7 @@ Skipped resources are reported per document with stable reasons
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 use PlutoBook\Document;
 $dir = __DIR__ . '/resource-errors-' . uniqid();
 mkdir("$dir/base/folder", 0777, true);
@@ -11,7 +12,7 @@ $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAEElEQVR4nG
 file_put_contents("$dir/base/dot.png", $png);
 file_put_contents("$dir/base/empty.css", '');
 file_put_contents("$dir/outside.png", $png);
-$base = "file://$dir/base/";
+$base = plutobookTestFileUrl("$dir/base/");
 $doc = new Document();
 var_dump($doc->getResourceErrors());
 // PlutoBook fetches stylesheets while parsing and images while building boxes; order is not API.
@@ -20,7 +21,7 @@ function report(Document $doc, string $html, ?string $base, string $dir): void {
     $doc->toPdf();
     $lines = [];
     foreach ($doc->getResourceErrors() as ['url' => $url, 'reason' => $reason]) {
-        $lines[] = str_pad($reason, 19) . str_replace("file://$dir", '', $url);
+        $lines[] = str_pad($reason, 19) . str_replace(plutobookTestFileUrl($dir), '', $url);
     }
     sort($lines);
     echo implode("\n", [...$lines, '--']), "\n";

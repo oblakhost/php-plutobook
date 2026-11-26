@@ -16,6 +16,7 @@ plutobook.http_timeout=2
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 require __DIR__ . '/network.inc';
 use PlutoBook\Document;
 $port = plutobook_test_server('tcp');
@@ -73,7 +74,7 @@ $invalid = [
     [['allowedHosts' => ['bad host']]],
     [['allowedHosts' => ['*.']]],
     [['baseUrl' => 'https://']],
-    [['baseUrl' => "$origin/", 'documentRoot' => 'file:///']],
+    [['baseUrl' => "$origin/", 'documentRoot' => plutobookTestFileUrl(__DIR__ . '/')]],
 ];
 foreach ($invalid as [$arguments]) {
     try {

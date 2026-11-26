@@ -1,8 +1,22 @@
-# php-pdf
+<div align="center">
+
+# PlutoBook for PHP
+
+[![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](composer.json)
+[![Platforms: Linux NTS and Windows x64](https://img.shields.io/badge/platform-Linux%20NTS%20%7C%20Windows%20x64-444)](#verification-and-distribution)
+[![PlutoBook 0.20.0](https://img.shields.io/badge/PlutoBook-0.20.0-29688A)](#building-against-system-libraries)
+
+[![CI: PHPT, CLI and FPM](https://img.shields.io/badge/CI-PHPT%20%2F%20CLI%20%2F%20FPM-2088FF?logo=githubactions&logoColor=white)](.github/workflows/toolchains.yml)
+[![Unit line coverage gate: 85%](https://img.shields.io/badge/unit%20coverage%20gate-85%25-444)](CONTRIBUTING.md#testing)
+[![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](release.config.mjs)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+</div>
 
 `plutobook` is a compiled PHP extension that turns HTML and CSS into PDF bytes
 inside the PHP process. Each `PlutoBook\Document` owns a native PlutoBook
-document. The initial target is Linux NTS PHP 8.2–8.6 and PlutoBook 0.20.0.
+document. The extension targets PHP 8.2–8.6 with PlutoBook 0.20.0 on Linux
+(NTS) and Windows x64 (NTS and TS).
 
 ```php
 $document = new PlutoBook\Document(pageSize: 'A4', margins: '15mm');
@@ -49,6 +63,72 @@ Builds use existing non-PHP host tools and libraries read-only. Each extension
 build uses its own absolute `phpize`, `php-config` and CLI. Build configuration,
 compiler details and private FPM request evidence are under `artifacts/`.
 [Source and tool pins](tools/sources.sha256)
+
+### Native Windows build over SSH
+
+From this checkout, run the full build or select a shorter check:
+
+```sh
+scripts/test-winbuild 8.4.28
+scripts/test-winbuild 8.4.28 phpt tests/unit/windows-junctions.phpt
+scripts/test-winbuild 8.4.28 php --ri plutobook
+```
+
+The command connects to the existing `winbuild` OpenSSH alias, including for file
+transfer. It sends the working copies of the extension and tests, so local edits
+can be tested before a commit. The host needs x64 Visual Studio 2022 C++ Build
+Tools with a Windows SDK, CMake, Ninja, Python 3.11+, and Windows tar. The
+Linux workstation uses Bash, Git, OpenSSH, GNU tar, Python 3, Poppler and a
+container engine. It cross-compiles the patched renderer once and reuses it
+across the native PHP builds.
+
+The first run builds a private x64 NTS PHP CLI and caches it with the pinned
+dependencies under `%USERPROFILE%\pdf-ext`. Each invocation builds a fresh DLL
+against the matching PHP headers. The full run exercises the Windows CLI and
+PHPT suite, renders the invoice on Windows, and inspects the resulting PDF on
+the workstation. The printed directory under `artifacts/winbuild/8.4.28/`
+contains the DLL, build log, PDFs and the portable development ZIP. A verified
+copy of the ZIP also lives in `%USERPROFILE%\pdf-ext\artifacts` on the host. Extract the
+ZIP on Windows x64 with the Microsoft Visual C++ v14 x64 runtime installed.
+From the extracted folder, use the included launcher:
+
+```bat
+php-plutobook.cmd --ri plutobook
+php-plutobook.cmd your-script.php
+```
+
+PHP-FPM and the native line-coverage gate run on Linux.
+
+### Windows release packages
+
+With [PIE](https://github.com/php/pie) configured for the target PHP installation, run
+
+```sh
+pie install oblakhost/php-plutobook
+php --ri plutobook
+```
+
+PIE selects a ZIP by PHP minor version, thread safety, compiler and architecture.
+For example, `php_plutobook-1.0.0-8.4-nts-vs17-x86_64.zip` is for 64-bit
+non-thread-safe PHP 8.4 built with Visual Studio 2022. PIE installs
+`php_plutobook.dll` in PHP's extension directory, `libplutobook-0.dll` next to
+`php.exe`, and the fonts, configuration and license files under
+`extras\plutobook`. The binding includes libcurl and zlib and uses Windows
+Schannel for HTTPS.
+
+An explicit `FONTCONFIG_FILE` or `FONTCONFIG_PATH` takes precedence over the
+packaged fonts. If the PHP directory contains characters outside the Windows
+ANSI code page and its volume has 8.3 filenames disabled, copy `fonts.conf`
+and its adjacent `fonts` directory to a representable path and point
+`FONTCONFIG_PATH` there.
+
+To build a release ZIP from the current checkout and test its installed layout on
+`winbuild`, pass the extension version and thread mode explicitly.
+
+```sh
+scripts/test-winbuild 8.4.28 release 1.0.0 nts
+scripts/test-winbuild 8.4.28 release 1.0.0 ts
+```
 
 ## Document API
 
@@ -131,7 +211,7 @@ these local files or from the live site. `getResourceErrors()` reports the URLs 
 the document saw them, for example `file:///assets/missing.png`.
 
 The asset loader confines regular files to the selected tree and checks PHP's
-`open_basedir`. Symlinks inside the tree work, while those leading out of it are
+`open_basedir`. On Linux, symlinks inside the tree work, while those leading out of it are
 refused. After those checks it reopens the resolved path one component at a time
 without following symlinks, so a path swapped for a symlink in the meantime is
 refused. It does not need `/proc`, so it also works in an FPM `chroot`. Devices,
@@ -140,6 +220,10 @@ are disabled unless the document lists `allowedHosts`. Missing or denied resourc
 omitted while surrounding content renders. The renderer also uses Fontconfig for
 installed fonts. The fixture scripts select a private Fontconfig file for
 repeatable output.
+
+On Windows, use a local drive URL such as `file:///C:/invoices/assets/`.
+The loader pins the directory by handle and refuses reparse points (including
+junctions and symlinks), UNC paths, device names and alternate data streams.
 
 Each skipped resource appears once in `getResourceErrors()` as
 `['url' => …, 'reason' => …, 'detail' => …]`. `reason` is one of the stable codes
@@ -372,18 +456,22 @@ and Clang otherwise. Its unit run fails on any LeakSanitizer report outside
 PHP and native quality checks, including the 85% unit line-coverage gate.
 [Development conventions](CONTRIBUTING.md)
 
-Known issue: Cairo 1.18 leaks about 14 KB of PDF font state per rendered page,
-which shows up as roughly 18 KiB of resident memory per invoice in a long-lived
-worker. The leak is in Cairo, called from PlutoBook, not in this binding.
-`tools/asan/render-loop.c` reproduces it without PHP. The portable modules carry
-fixes for it. With a system Cairo, recycle FPM workers with `pm.max_requests`.
+Cairo 1.18 leaks PDF font options, and PlutoBook 0.20.0 passes a variation
+string even for fonts with no variation axes. With the upstream Windows
+renderer, the process working set grew by about 19 KiB per invoice over 800
+renders. The Linux portable modules and Windows packages carry both fixes.
+`tools/asan/render-loop.c` reproduces the native leak independently of PHP.
+For installations using affected system libraries, recycle FPM workers with
+`pm.max_requests`.
+[Cairo #1000](https://gitlab.freedesktop.org/cairo/cairo/-/issues/1000)
+· [PlutoBook #84](https://github.com/plutoprint/plutobook/issues/84)
 
-The Linux NTS matrix covers synthetic invoices. ZTS is unsupported. JavaScript
+The Linux NTS and Windows NTS and TS matrices cover synthetic invoices. JavaScript
 and CSS Grid are roadmap items in the pinned renderer. Comparison with the
 original WHMCS/Gotenberg output awaits the real fixture.
 [PlutoBook 0.20.0 feature overview](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md)
 
-The PIE package name is `oblakhost/php-pdf`. Semantic-release prepares GitHub
+The PIE package name is `oblakhost/php-plutobook`. Semantic-release prepares GitHub
 source releases after the CI matrix passes. Public Packagist registration
 requires an accessible repository. PECL directs new extensions to PIE.
 [PECL publishing policy](https://pecl.php.net/account-request.php)

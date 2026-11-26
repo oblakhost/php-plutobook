@@ -69,7 +69,7 @@ static bool php_plutobook_parse_margins(zend_string *value, plutobook_page_margi
 bool php_plutobook_page_options(zend_string *paper, zend_string *orientation, zend_string *margins,
                                 plutobook_page_size_t *size, plutobook_page_margins_t *insets)
 {
-	static const struct {
+	const struct {
 		const char *name;
 		plutobook_page_size_t size;
 	} papers[] = {{"A3", PLUTOBOOK_PAGE_SIZE_A3},       {"A4", PLUTOBOOK_PAGE_SIZE_A4},

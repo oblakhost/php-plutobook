@@ -2,6 +2,7 @@
 A PHP time limit reached during native PDF output stops the renderer and ends in the normal fatal error
 --SKIPIF--
 <?php
+if (PHP_OS_FAMILY === 'Windows') die('skip SIGPROF is a POSIX signal');
 if (!is_executable('/bin/sh')) {
     die('skip a shell is needed to deliver SIGPROF');
 }

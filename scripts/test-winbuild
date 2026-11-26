@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Stage working sources and run a private native Windows PHP over OpenSSH.
+set -euo pipefail
+usage() { echo 'Usage: scripts/test-winbuild VERSION [php ARG... | phpt PATH... | release RELEASE_VERSION nts|ts]' >&2; }
+if [[ ${1:-} == --help ]]; then usage; exit 0; fi
+if [[ ! ${1:-} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then usage; exit 2; fi
+version=$1
+shift
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "$root"
+mode=${1:-suite}
+if (($#)); then shift; fi
+case "$mode" in
+  suite) (($# == 0)) || { usage; exit 2; } ;;
+  php) ;;
+  phpt) (($#)) || { usage; exit 2; } ;;
+  release) [[ $# == 2 && $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $2 =~ ^(nts|ts)$ ]] || { usage; exit 2; } ;;
+  *) usage; exit 2 ;;
+esac
+
+host=${WINBUILD_HOST:-winbuild}
+options=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+remote() { ssh -n "${options[@]}" -- "$host" "$@"; }
+names=$(python3 scripts/windows/runner.py --inputs "$version" "$mode")
+if [[ -n ${PLUTOBOOK_WINDOWS_RENDERER:-} ]]; then
+  renderer=$PLUTOBOOK_WINDOWS_RENDERER
+else
+  scripts/build-windows-renderer
+  renderer="$root/build/windows-renderer/renderer.zip"
+fi
+read -r renderer_hash _ < <(sha256sum "$renderer")
+mkdir -p "artifacts/winbuild/$version"
+report=$(mktemp -d "$root/artifacts/winbuild/$version/run.XXXXXXXX")
+stage="pdf-ext/runs/${report##*/}"
+# Use a random run directory. Concurrent callers never share test inputs.
+remote "mkdir \"$stage\""
+echo "Windows build and test log: $report/run.log"
+tmp=$(mktemp -d)
+trap 'rm -rf -- "$tmp"' EXIT
+python3 -c 'import json,sys; json.dump(sys.argv[1:],sys.stdout)' "$mode" "$@" > "$tmp/args.json"
+printf '%s\n' "$renderer_hash" > "$tmp/renderer.sha256"
+git ls-files -co --exclude-standard -z -- ext scripts tests tools/sources.sha256 tools/patches LICENSE THIRD_PARTY.md |
+  while IFS= read -r -d '' file; do [[ ! -f $file ]] || printf '%s\0' "$file"; done |
+  tar -czf "$tmp/work.tar.gz" --null -T - -C "$tmp" args.json renderer.sha256
+scp "${options[@]}" -- "$tmp/work.tar.gz" "$host:$stage/work.tar.gz"
+present=$(remote "if exist \"pdf-ext/cache/renderer-$renderer_hash.zip\" echo cached" | tr -d '\r')
+if [[ $present != cached ]]; then
+  scp "${options[@]}" -- "$renderer" "$host:$stage/renderer.zip"
+fi
+while IFS= read -r name; do
+  present=$(remote "if exist \"pdf-ext/cache/$name\" echo cached" | tr -d '\r')
+  if [[ $present != cached ]]; then
+    archive=$("$root/scripts/fetch-source" "$name")
+    scp "${options[@]}" -- "$archive" "$host:$stage/$name"
+  fi
+done <<< "$names"
+status=0
+remote "cd /d \"$stage\" && tar -xzf work.tar.gz && python -u scripts/windows/runner.py $version" 2>&1 | tee "$report/run.log" || status=$?
+scp "${options[@]}" -- "$host:$stage/results.zip" "$tmp/results.zip"
+python3 -m zipfile -e "$tmp/results.zip" "$report"
+if ((status)); then
+  remote "python -c \"import shutil; shutil.rmtree('$stage')\""
+  exit "$status"
+fi
+if [[ $mode != php ]] && ! grep -Eq 'Tests passed *: +[1-9]' "$report/run.log"; then
+  echo "No passing PHPTs. See $report/run.log" >&2
+  exit 1
+fi
+if [[ $mode == suite || $mode == release ]]; then
+  python3 tests/integration/inspect-invoice.py "$report/cli.pdf"
+fi
+if [[ $mode == suite ]]; then
+  # Keep the verified ZIP accessible on the host after deleting this run's scratch files.
+  package="php-plutobook-php-$version-nts-win-x64.zip"
+  remote "python -c \"from pathlib import Path; p=Path('pdf-ext/artifacts'); p.mkdir(exist_ok=True); Path('$stage/results/$package').replace(p/'$package')\""
+fi
+remote "python -c \"import shutil; shutil.rmtree('$stage')\""

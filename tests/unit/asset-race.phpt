@@ -2,6 +2,7 @@
 Swapping an asset directory for a symlink while rendering never exposes files outside the base
 --SKIPIF--
 <?php
+if (PHP_OS_FAMILY === 'Windows') die('skip the racing process uses POSIX rename and symlinks');
 if (!is_executable('/bin/sh')) {
     die('skip a shell is needed for the racing process');
 }
@@ -10,6 +11,7 @@ if (!is_executable('/bin/sh')) {
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 $dir = __DIR__ . '/asset-race-' . uniqid();
 mkdir("$dir/base/sub", 0777, true);
 mkdir("$dir/outside/sub", 0777, true);
@@ -31,7 +33,7 @@ for ($i = 0; $i < 200 && !file_exists("$dir/racing"); $i++) {
 $doc = new PlutoBook\Document();
 $outside = 0;
 for ($i = 0; $i < 500; $i++) {
-    $doc->loadHtml('<img src="sub/dot.png">', "file://$dir/base/");
+    $doc->loadHtml('<img src="sub/dot.png">', plutobookTestFileUrl("$dir/base/"));
     if (str_contains($doc->toPdf(), '/Width 1')) {
         $outside++;
     }

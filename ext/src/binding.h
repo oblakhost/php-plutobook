@@ -57,6 +57,14 @@ typedef enum {
 	PHP_PLUTOBOOK_ASSET_NETWORK_ERROR,
 } php_plutobook_asset_status;
 
+#ifdef PHP_WIN32
+typedef HANDLE php_plutobook_directory;
+#define PHP_PLUTOBOOK_INVALID_DIRECTORY INVALID_HANDLE_VALUE
+#else
+typedef int php_plutobook_directory;
+#define PHP_PLUTOBOOK_INVALID_DIRECTORY (-1)
+#endif
+
 typedef struct {
 	plutobook_t *book;
 	zend_string *asset_root;
@@ -68,7 +76,7 @@ typedef struct {
 	// Budgets since the last loadHtml(): asset bytes handed to the renderer, network time spent.
 	size_t asset_bytes;
 	int64_t network_ms;
-	int asset_dir;
+	php_plutobook_directory asset_dir;
 	bool loaded;
 	bool busy;
 	bool bailed;
@@ -77,11 +85,24 @@ typedef struct {
 	zend_object std;
 } php_plutobook_document;
 
-// PHP's execution timer only sets this flag. The VM raises the error at its next check, which
-// never happens while the renderer runs, so callbacks poll it and stop the renderer early.
+// Native rendering runs between VM interrupt checks. On Windows the timeout flag can
+// stay set after the VM has delivered the fatal error (in particular on ZTS builds).
 static inline bool php_plutobook_timed_out(void)
 {
+#ifdef PHP_WIN32
+	return zend_atomic_bool_load_ex(&EG(vm_interrupt)) && zend_atomic_bool_load_ex(&EG(timed_out));
+#else
 	return zend_atomic_bool_load_ex(&EG(timed_out));
+#endif
+}
+
+static inline void php_plutobook_raise_timeout(void)
+{
+#ifdef PHP_WIN32
+	// Consume the pending interrupt just as the VM does before invoking zend_timeout().
+	zend_atomic_bool_store_ex(&EG(vm_interrupt), false);
+#endif
+	zend_timeout();
 }
 
 // Bytes the document may still load under plutobook.max_total_asset_size; 0 removes the cap.
@@ -96,7 +117,10 @@ static inline size_t php_plutobook_asset_bytes_left(const php_plutobook_document
 
 bool php_plutobook_page_options(zend_string *paper, zend_string *orientation, zend_string *margins,
                                 plutobook_page_size_t *size, plutobook_page_margins_t *insets);
-zend_string *php_plutobook_asset_root(zend_string *base, int *directory, uint32_t arg);
+void php_plutobook_close_directory(php_plutobook_directory directory);
+zend_string *php_plutobook_asset_root(zend_string *base, php_plutobook_directory *directory,
+                                      uint32_t arg);
+const char *php_plutobook_relative_path(const zend_string *root, const char *path);
 zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base);
 const char *php_plutobook_mime_from_path(const char *path, size_t length);
 plutobook_resource_data_t *php_plutobook_fetch_asset(void *closure, const char *url);

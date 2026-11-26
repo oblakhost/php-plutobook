@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Runs in the isolated MinGW container with the project and verified archive cache mounted read-only.
+set -euo pipefail
+export SOURCE_DATE_EPOCH=0
+cache=/src/.cache/sources
+src=/work/plutobook
+obj=/work/obj
+meson=/work/meson/meson.py
+if [[ ! -f /work/.prepared ]]; then
+  mkdir -p /work/meson "$src"
+  tar -xf "$cache/$2" --strip-components=1 -C /work/meson
+  tar -xf "$cache/$1" --strip-components=1 -C "$src"
+  patch -d "$src" -p0 < /src/tools/patches/plutobook-0.20.0-static-font-variations.patch
+  cp -f /src/tools/portable/wraps/*.wrap "$src/subprojects/"
+  cp -f /src/tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch "$src/subprojects/packagefiles/"
+  mkdir -p "$src/subprojects/packagecache"
+  for archive in "${@:3}"; do ln -sf "$cache/$archive" "$src/subprojects/packagecache/$archive"; done
+  touch /work/.prepared
+fi
+# ICU's wrap links a stub data archive into icu-uc so that its native build tools can
+# bootstrap. Supply the real break-iterator and locale data to the renderer first.
+if [[ ! -f /work/icu-data.o ]]; then
+  tar -xzf "$cache/icu4c-78.2-sources.tgz" -O icu/source/data/in/icudt78l.dat > /work/icudt78l.dat
+  mkdir -p /work/trimmed
+  icupkg -l -o /work/icu-items.txt /work/icudt78l.dat
+  grep -vE '^(#|$)' /src/tools/portable/icu-keep.txt > /work/icu-keep.txt
+  while IFS= read -r pattern; do
+    grep -qxE "$pattern" /work/icu-items.txt || { echo "Missing ICU data pattern: $pattern" >&2; exit 1; }
+  done < /work/icu-keep.txt
+  grep -vxE -f /work/icu-keep.txt /work/icu-items.txt > /work/icu-remove.txt
+  icupkg -r /work/icu-remove.txt /work/icudt78l.dat /work/trimmed/icudt78l.dat
+  x86_64-w64-mingw32-gcc-posix -x assembler -c -o /work/icu-data.o - <<'ASM'
+.section .rdata,"dr"
+.balign 16
+.global icudt78_dat
+icudt78_dat:
+.incbin "/work/trimmed/icudt78l.dat"
+ASM
+fi
+if [[ ! -f "$obj/build.ninja" ]]; then
+  static=()
+  for component in cairo expat fontconfig freetype2 harfbuzz icu libjpeg-turbo libpng libwebp pixman zlib; do
+    static+=("-D$component:default_library=static")
+  done
+  python3 "$meson" setup "$obj" "$src" --cross-file=/src/tools/windows-renderer/x86_64-windows.ini \
+    --buildtype=release --default-library=shared --prefer-static --wrap-mode=nodownload \
+    --force-fallback-for=cairo,pixman-1,libpng,zlib,freetype2,fontconfig,harfbuzz,expat,icu,libturbojpeg,libwebp \
+    "${static[@]}" -Dcpp_args='-DCAIRO_WIN32_STATIC_BUILD -DU_STATIC_IMPLEMENTATION' \
+    -Dcpp_link_args='-static -static-libgcc -static-libstdc++ -Wl,--no-insert-timestamp /work/icu-data.o' \
+    -Dcurl=disabled -Dturbojpeg=enabled -Dwebp=enabled -Dtools=disabled -Dexamples=disabled -Dtests=disabled \
+    -Dfontconfig:cache-build=disabled -Dfontconfig:nls=disabled -Dfreetype2:brotli=disabled \
+    -Dfreetype2:bzip2=disabled -Dpixman:openmp=disabled
+fi
+ninja -C "$obj" -j "${JOBS:-4}" libplutobook-0.dll
+x86_64-w64-mingw32-strip --strip-unneeded -o /work/libplutobook-0.dll "$obj/libplutobook-0.dll"
+python3 /src/tools/windows-renderer/package.py "$@"

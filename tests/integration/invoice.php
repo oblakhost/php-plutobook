@@ -8,7 +8,8 @@ $fixture = realpath(__DIR__ . '/../fixtures/invoice');
 if ($fixture === false) {
     throw new RuntimeException('Missing invoice assets');
 }
-$baseUrl = 'file://' . implode('/', array_map('rawurlencode', explode('/', $fixture))) . '/';
+require dirname(__DIR__) . '/fixtures/file-url.php';
+$baseUrl = plutobookTestFileUrl($fixture . '/');
 
 if (PHP_SAPI === 'fpm-fcgi') {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {

@@ -14,11 +14,16 @@ function plutobook_test_font(): string
 // Start network-server.php and return its port. The server stops when the test ends.
 function plutobook_test_server(string $transport, ?string $certificate = null): int
 {
-    $command = [PHP_BINARY, '-n', __DIR__ . '/network-server.php', $transport, plutobook_test_font()];
+    $command = [PHP_BINARY, '-n'];
+    if ($transport === 'tls' && PHP_OS_FAMILY === 'Windows') {
+        $command[] = '-d';
+        $command[] = 'extension=' . dirname(PHP_BINARY) . '/php_openssl.dll';
+    }
+    array_push($command, __DIR__ . '/network-server.php', $transport, plutobook_test_font());
     if ($certificate !== null) {
         $command[] = $certificate;
     }
-    $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+    $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'w']], $pipes);
     $port = $process ? (int) fgets($pipes[1]) : 0;
     if (!$port) {
         exit("fixture server did not start\n");

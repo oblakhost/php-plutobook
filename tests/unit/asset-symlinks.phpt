@@ -2,6 +2,8 @@
 Asset symlinks may stay inside the base tree; escapes and FIFOs are refused without blocking
 --SKIPIF--
 <?php
+// Win32 reparse points have a separate containment test.
+if (PHP_OS_FAMILY === 'Windows') die('skip POSIX symlinks and FIFOs require a Unix filesystem');
 foreach (['/usr/bin/mkfifo', '/bin/mkfifo'] as $tool) {
     if (is_executable($tool)) exit;
 }
@@ -11,6 +13,7 @@ echo 'skip mkfifo is unavailable';
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 use PlutoBook\Document;
 $dir = __DIR__ . '/asset-symlinks-' . uniqid();
 mkdir("$dir/release/assets/img", 0777, true);
@@ -30,7 +33,7 @@ if ($status !== 0) {
 // The base itself goes through a deploy-style symlink: current -> release.
 $doc = new Document();
 foreach (['img/dot.png', 'relative.png', 'absolute.png', 'escape.png', 'escape-dir/key.png', 'pipe.png'] as $src) {
-    $doc->loadHtml("<img src=\"$src\">", "file://$dir/current/assets/");
+    $doc->loadHtml("<img src=\"$src\">", plutobookTestFileUrl("$dir/current/assets/"));
     $loaded = str_contains($doc->toPdf(), '/Subtype /Image');
     printf("%-19s %s\n", $src, $loaded ? 'loaded' : implode(',', array_column($doc->getResourceErrors(), 'reason')));
 }

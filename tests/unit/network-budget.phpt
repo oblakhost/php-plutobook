@@ -1,12 +1,5 @@
 --TEST--
 Remote assets share the document's byte budget and network time budget
---SKIPIF--
-<?php
-require __DIR__ . '/network.inc';
-if (!is_readable(plutobook_test_font())) {
-    die('skip FONTCONFIG_FILE must point at the pinned DejaVu fonts');
-}
-?>
 --INI--
 plutobook.allow_private_addresses=1
 plutobook.http_timeout=5

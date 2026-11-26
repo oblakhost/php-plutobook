@@ -45,3 +45,8 @@ ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743  https://files.
 b724240722276a27f6e770b952121a3afd097129d8c9fe18e6272dc34192035a  https://curl.se/download/curl-7.68.0.tar.xz
 # Parser required by the PHP 8.2 stub generator
 3809fd405ac0d154bb5f3525ebc91dd06e282ddd25fcccffa21df44ba470b64a  https://codeload.github.com/nikic/PHP-Parser/tar.gz/refs/tags/v4.15.1
+# PHP Windows SDK 2.9.0, immutable commit archive
+c071abbb1c561d9f1109068a4ef4f46bf3f11c0bd68cd20a29b02067f3d4b04b  https://codeload.github.com/php/php-sdk-binary-tools/tar.gz/81b356186db123ce9cd65149cee4683211a59ebd
+5ecb409605051160a965b995ca41004ebde16f2d2c4e94ef1a135bec16ac5863  https://github.com/plutoprint/plutobook/releases/download/v0.20.0/plutobook-0.20.0-win-x64.zip
+889b08e67ff0f7aae59f58619f4f73da7b4998ae2b6f96e1a4b0acaf89d6c280  https://downloads.php.net/~windows/php-sdk/deps/vs17/x64/openssl-3.5.9-vs17-x64.zip
+2d47f60a56fd435137aae6aa874eab5eddacb5611e82ea0eaf21687382f312da  https://downloads.php.net/~windows/php-sdk/deps/vs17/x64/zlib-1.3.2-1-vs17-x64.zip

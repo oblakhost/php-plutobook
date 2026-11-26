@@ -4,6 +4,8 @@ name: Release extension
 #   version  A semantic-release dry run reports the next version, or nothing when no
 #            release is due or master has moved on.
 #   linux    Builds and tests the portable modules and packages as that version.
+#   renderer Cross-builds the shared Windows renderer from the pinned graphics sources.
+#   windows  Builds and tests one native PIE ZIP for each Windows PHP ABI.
 #   publish  semantic-release checks the version again, adds the source archive, signs
 #            the rpm files and SHA256SUMS with the release key, tags, uploads, publishes.
 on: workflow_call
@@ -20,6 +22,7 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.next.outputs.version }}
+      windows: ${{ steps.windows.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +35,11 @@ jobs:
         run: RELEASE_VERSION_OUTPUT="$GITHUB_OUTPUT" npx --no-install semantic-release --dry-run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - id: windows
+        if: steps.next.outputs.version != ''
+        env:
+          PLUTOBOOK_RELEASE_VERSION: ${{ steps.next.outputs.version }}
+        run: python3 -B .github/scripts/release-assets.py matrix "$PLUTOBOOK_RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
   linux:
     needs: version
@@ -72,8 +80,72 @@ jobs:
             build/portable/root/artifacts/
             build/portable/package-tests/
 
+  renderer:
+    name: Build Windows x64 renderer
+    needs: version
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sources
+          key: windows-renderer-sources-${{ hashFiles('tools/sources.sha256') }}
+      - run: scripts/build-windows-renderer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-renderer
+          path: build/windows-renderer/renderer.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows PHP ${{ matrix.php }} ${{ matrix.thread }} ${{ matrix.compiler }} x64
+    needs: [version, renderer]
+    if: needs.version.outputs.version != ''
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.version.outputs.windows) }}
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PLUTOBOOK_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      PHP_RELEASE: ${{ matrix.php }}
+      PHP_THREAD_SAFETY: ${{ matrix.thread }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-renderer
+          path: build/windows-renderer
+      - name: Set private build directory and renderer path
+        run: |
+          "PLUTOBOOK_WINDOWS_ROOT=$env:RUNNER_TEMP/plutobook" >> $env:GITHUB_ENV
+          "PLUTOBOOK_WINDOWS_RENDERER=$((Resolve-Path build/windows-renderer/renderer.zip).Path)" >> $env:GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/plutobook/cache
+          key: windows-sources-${{ matrix.php }}-${{ hashFiles('tools/sources.sha256') }}
+      - name: Stage checksum-pinned source archives
+        run: ./.github/scripts/stage-windows-sources.ps1
+      - name: Build and test the native PIE package
+        run: python -u scripts/windows/runner.py "$env:PHP_RELEASE" release "$env:PLUTOBOOK_RELEASE_VERSION" "$env:PHP_THREAD_SAFETY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            results/${{ matrix.zip }}
+            results/cli.pdf
+          if-no-files-found: error
+
   publish:
-    needs: [version, linux]
+    needs: [version, linux, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -89,19 +161,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: linux
-          path: artifacts/releases
-      - name: Check that every asset was built as this version
-        run: |
-          cd artifacts/releases
-          v=$PLUTOBOOK_RELEASE_VERSION
-          ls "php_plutobook-$v-mpl-sources.tar.xz"
-          sed -nE 's|.*/php-([0-9]+\.[0-9]+)\.[0-9]+\.tar\.xz$|\1|p' ../../tools/sources.sha256 |
-            while read -r minor; do
-              ls "php_plutobook-${v}_php$minor-x86_64-linux-glibc-nts.zip" "php$minor-plutobook_$v-1_amd64.deb" \
-                "php-plutobook-$v-1.php${minor/./}.el8.x86_64.rpm" "php-plutobook-$v-1.php${minor/./}.el9.x86_64.rpm" \
-                "php-plutobook-$v-1.php${minor/./}.el10.x86_64.rpm"
-            done
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+          path: build/linux-release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-release-*
+          path: build/windows-release
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm poppler-utils
+      - name: Check Windows invoices and assemble the exact release assets
+        run: python3 -B .github/scripts/release-assets.py collect "$PLUTOBOOK_RELEASE_VERSION"
       - uses: crazy-max/ghaction-import-gpg@v6
         with:
           gpg_private_key: ${{ secrets.OBLAKBOT_GPG_KEY }}

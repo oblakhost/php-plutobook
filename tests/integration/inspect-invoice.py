@@ -22,7 +22,7 @@ require(pdf.read_bytes().startswith(b"%PDF-"), f"{pdf} is not a PDF")
 def report(program, suffix, *args):
     output = subprocess.check_output([program, *args, pdf])
     pdf.with_suffix(suffix).write_bytes(output)
-    return output.decode("utf-8")
+    return output.decode("utf-8").replace("\r\n", "\n")
 
 
 info = report("pdfinfo", ".info.txt")

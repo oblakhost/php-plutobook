@@ -4,6 +4,7 @@ plutobook.max_asset_size caps local asset reads and rejects invalid settings
 STDOUT
 --FILE--
 <?php
+require dirname(__DIR__) . '/fixtures/file-url.php';
 use PlutoBook\Document;
 $dir = __DIR__ . '/asset-limit-' . uniqid();
 mkdir($dir);
@@ -12,7 +13,7 @@ file_put_contents("$dir/dot.png", $png);
 $size = strlen($png);
 $doc = new Document();
 $image = function () use ($doc, $dir): string {
-    $doc->loadHtml('<img src="dot.png">', "file://$dir/");
+    $doc->loadHtml('<img src="dot.png">', plutobookTestFileUrl("$dir/"));
     return str_contains($doc->toPdf(), '/Subtype /Image') ? 'loaded' : 'skipped';
 };
 $entry = ini_get_all('plutobook')['plutobook.max_asset_size'];
