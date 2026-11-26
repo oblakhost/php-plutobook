@@ -103,7 +103,7 @@ A successful push to master then calls the reusable release workflow
    set of Linux and Windows asset names against the version and PHP pins. The
    Windows ZIPs follow `php_plutobook-VERSION-MAJOR.MINOR-THREAD-COMPILER-x86_64.zip`,
    for example `php_plutobook-1.2.0-8.3-nts-vs16-x86_64.zip`. It imports the
-   organization's `OBLAKBOT_GPG_KEY`, and runs semantic-release. The version
+   organization's `GPG_PRIVATE_KEY`, and runs semantic-release. The version
    plugin stops the release if the version changed since the build. Prepare steps
    then add the PIE source archive (`scripts/release-source.mjs`) and sign
    (`scripts/sign-release`): every rpm with rpmsign, and `SHA256SUMS` over all

@@ -171,8 +171,8 @@ jobs:
         run: python3 -B .github/scripts/release-assets.py collect "$PLUTOBOOK_RELEASE_VERSION"
       - uses: crazy-max/ghaction-import-gpg@v6
         with:
-          gpg_private_key: ${{ secrets.OBLAKBOT_GPG_KEY }}
-          passphrase: ${{ secrets.OBLAKBOT_GPG_PASS }}
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version

@@ -5,7 +5,7 @@
 # Signs every rpm with rpmsign, adds the public key as php-plutobook-signing-key.asc,
 # writes SHA256SUMS over all assets and signs it as SHA256SUMS.asc, then verifies both.
 # The secret key must be in the GnuPG keyring with its passphrase cached in gpg-agent
-# (the release workflow imports OBLAKBOT_GPG_KEY), and must match the public key in
+# (the release workflow imports GPG_PRIVATE_KEY), and must match the public key in
 # tools/keys/release-signing-key.asc or PLUTOBOOK_SIGNING_KEY.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)

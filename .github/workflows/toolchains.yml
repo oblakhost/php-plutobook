@@ -66,5 +66,5 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
-    # The publish job signs with the organization's OBLAKBOT_GPG_KEY and OBLAKBOT_GPG_PASS.
+    # The publish job signs with the organization's GPG_PRIVATE_KEY and GPG_PASSPHRASE.
     secrets: inherit
