@@ -22,14 +22,18 @@ const types = [
 
 export default {
   branches: ["master"],
-  repositoryUrl: "https://github.com/oblakhost/php-pdf.git",
+  repositoryUrl: "https://github.com/oblakhost/php-plutobook.git",
   tagFormat: "${version}",
+  // The release workflow puts the binaries and packages in artifacts/releases first.
+  // Prepare steps run in order: the source archive, then the signatures over everything.
   plugins: [
     ["@semantic-release/commit-analyzer", { preset, releaseRules, parserOpts }],
+    "./scripts/release-version.mjs",
     ["@semantic-release/release-notes-generator", { preset, presetConfig: { types } }],
     "./scripts/release-source.mjs",
+    "./scripts/release-sign.mjs",
     ["@semantic-release/github", {
-      assets: ["artifacts/releases/*.tgz"],
+      assets: ["artifacts/releases/*"],
       successComment: false,
       failComment: false,
       releasedLabels: false,

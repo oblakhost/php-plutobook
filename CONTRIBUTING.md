@@ -79,12 +79,26 @@ the GitHub default branch, `master`.
 Release development uses the Node version in `.node-version` and `npm ci`.
 The GitHub Actions workflow builds the private toolchains, runs the PHPT and
 CLI/FPM invoice suites for each configured ABI and flavor, and checks coverage.
-A successful push to master can then call the reusable release workflow.
+A successful push to master then calls the reusable release workflow
+(`.github/workflows/release.yml`):
 
-Semantic-release creates a numeric SemVer tag and GitHub Release. Its prepare
-step packages the tested Git revision and embeds the same version in
-`ext/release-version.h` in the PIE source archive. The binding reports
-this version in release builds and a development version in a checkout.
-The release archive includes this project's license and third-party notices.
-For public distribution, register the accessible repository with Packagist and
-enable tag updates. The renderer remains a separately supplied native dependency.
+1. **version** runs semantic-release as a dry run. `scripts/release-version.mjs`
+   writes the next version to the job outputs. No version, no release.
+2. **linux** runs `scripts/build-portable`, `scripts/build-packages` and
+   `scripts/test-packages` with `PLUTOBOOK_RELEASE_VERSION` set to that version,
+   and uploads the PIE archives, the MPL sources and the packages.
+3. **publish** checks that every asset carries the version, imports the
+   organization's `OBLAKBOT_GPG_KEY`, and runs semantic-release. The version
+   plugin stops the release if the version changed since the build. Prepare steps
+   then add the PIE source archive (`scripts/release-source.mjs`) and sign
+   (`scripts/sign-release`): every rpm with rpmsign, and `SHA256SUMS` over all
+   assets as `SHA256SUMS.asc`. Only then does semantic-release tag, and its GitHub
+   plugin uploads to a draft release before publishing it.
+
+The source archive embeds the version in `ext/release-version.h`. The binding
+reports this version in release builds and a development version in a checkout.
+Every archive and package includes this project's license and the third-party
+notices. Releases are signed with `tools/keys/release-signing-key.asc`
+(fingerprint `D80D 92A4 A247 D7F6 BF32 4E1A BFE0 F7EC 429C 222F`); signing fails
+if the imported key differs. For public distribution, register the repository
+with Packagist and enable tag updates.

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Sign the release assets in DIR before they are uploaded.
+# Usage: scripts/sign-release DIR
+#
+# Signs every rpm with rpmsign, adds the public key as php-plutobook-signing-key.asc,
+# writes SHA256SUMS over all assets and signs it as SHA256SUMS.asc, then verifies both.
+# The secret key must be in the GnuPG keyring with its passphrase cached in gpg-agent
+# (the release workflow imports OBLAKBOT_GPG_KEY), and must match the public key in
+# tools/keys/release-signing-key.asc or PLUTOBOOK_SIGNING_KEY.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+dir=$(realpath -e "${1:?Usage: scripts/sign-release DIR}")
+key=${PLUTOBOOK_SIGNING_KEY:-$root/tools/keys/release-signing-key.asc}
+fingerprint=$(gpg --batch --with-colons --import-options show-only --import "$key" |
+  awk -F: '$1 == "fpr" {print $10; exit}')
+[[ $fingerprint =~ ^[0-9A-F]{40}$ ]] || { echo "No key in $key" >&2; exit 1; }
+if ! gpg --batch --list-secret-keys "$fingerprint" > /dev/null 2>&1; then
+  echo "The secret key $fingerprint is not in the keyring" >&2
+  exit 1
+fi
+# Never prompt: an uncached passphrase fails instead of waiting for a terminal.
+sign_args=(--batch --pinentry-mode error --local-user "$fingerprint")
+rm -f "$dir/SHA256SUMS" "$dir/SHA256SUMS.asc"
+
+shopt -s nullglob
+rpms=("$dir"/*.rpm)
+if ((${#rpms[@]})); then
+  # SHA-256 digests and an RSA signature, which EL8 to EL10 accept. Ubuntu's rpm expects
+  # gpg under another name, so name the one in PATH.
+  rpmsign --addsign --define "__gpg $(command -v gpg)" --define "_gpg_name $fingerprint" \
+    --define "_gpg_digest_algo sha256" \
+    --define "_gpg_sign_cmd_extra_args --batch --pinentry-mode error" "${rpms[@]}"
+  db=$(mktemp -d)
+  trap 'rm -rf "$db"' EXIT
+  rpm --dbpath "$db" --initdb
+  rpm --dbpath "$db" --import "$key"
+  for rpm in "${rpms[@]}"; do
+    rpm --dbpath "$db" --checksig "$rpm" | grep -q ': digests signatures OK$' ||
+      { rpm --dbpath "$db" --checksig -v "$rpm" >&2; exit 1; }
+  done
+fi
+
+cp "$key" "$dir/php-plutobook-signing-key.asc"
+(cd "$dir" && find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' | LC_ALL=C sort |
+  xargs -d '\n' sha256sum -- > SHA256SUMS)
+gpg "${sign_args[@]}" --armor --detach-sign --output "$dir/SHA256SUMS.asc" "$dir/SHA256SUMS"
+gpg --batch --verify "$dir/SHA256SUMS.asc" "$dir/SHA256SUMS" 2>&1 | grep -F "$fingerprint" > /dev/null ||
+  { echo "SHA256SUMS.asc does not verify with $fingerprint" >&2; exit 1; }
+(cd "$dir" && sha256sum --quiet --check SHA256SUMS)
+echo "Signed ${#rpms[@]} rpm files and SHA256SUMS ($(wc -l < "$dir/SHA256SUMS") assets) with $fingerprint"

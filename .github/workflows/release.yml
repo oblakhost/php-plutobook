@@ -1,20 +1,25 @@
 name: Release extension
 
-# Called after the full extension matrix succeeds for this revision.
+# Called by toolchains.yml after the extension matrix passes for a push to master.
+#   version  A semantic-release dry run reports the next version, or nothing when no
+#            release is due or master has moved on.
+#   linux    Builds and tests the portable modules and packages as that version.
+#   publish  semantic-release checks the version again, adds the source archive, signs
+#            the rpm files and SHA256SUMS with the release key, tags, uploads, publishes.
 on: workflow_call
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  version:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
+      # semantic-release checks that it could push, even in a dry run.
       contents: write
-    concurrency:
-      group: php-pdf-release
-      cancel-in-progress: false
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,6 +28,88 @@ jobs:
         with:
           node-version-file: .node-version
       - run: npm ci --ignore-scripts
-      - run: npm run release
+      - id: next
+        run: RELEASE_VERSION_OUTPUT="$GITHUB_OUTPUT" npx --no-install semantic-release --dry-run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux:
+    needs: version
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      PLUTOBOOK_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # Build trees, PHP builds and package test images outgrow the runner's free disk.
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      # The static renderer stack takes the longest. tools/portable/build checks each part
+      # against its inputs, so an older cache only saves the parts that still match.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/sources
+            build/portable/root/.local/portable
+          key: portable-${{ hashFiles('tools/portable/**', 'tools/patches/**', 'tools/sources.sha256') }}
+          restore-keys: portable-
+      - run: scripts/build-portable
+      - run: scripts/build-packages
+      - run: scripts/test-packages
+      - run: |
+          mkdir -p build/release-assets
+          cp build/portable/release/* build/portable/packages/* build/release-assets/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/release-assets/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-logs
+          path: |
+            build/portable/root/artifacts/
+            build/portable/package-tests/
+
+  publish:
+    needs: [version, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: php-plutobook-release
+      cancel-in-progress: false
+    env:
+      PLUTOBOOK_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: artifacts/releases
+      - name: Check that every asset was built as this version
+        run: |
+          cd artifacts/releases
+          v=$PLUTOBOOK_RELEASE_VERSION
+          ls "php_plutobook-$v-mpl-sources.tar.xz"
+          sed -nE 's|.*/php-([0-9]+\.[0-9]+)\.[0-9]+\.tar\.xz$|\1|p' ../../tools/sources.sha256 |
+            while read -r minor; do
+              ls "php_plutobook-${v}_php$minor-x86_64-linux-glibc-nts.zip" "php$minor-plutobook_$v-1_amd64.deb" \
+                "php-plutobook-$v-1.php${minor/./}.el8.x86_64.rpm" "php-plutobook-$v-1.php${minor/./}.el9.x86_64.rpm" \
+                "php-plutobook-$v-1.php${minor/./}.el10.x86_64.rpm"
+            done
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+      - uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.OBLAKBOT_GPG_KEY }}
+          passphrase: ${{ secrets.OBLAKBOT_GPG_PASS }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts
+      - run: npx --no-install semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

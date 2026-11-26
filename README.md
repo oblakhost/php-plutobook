@@ -343,6 +343,22 @@ field. `scripts/test-packages` installs each package in a clean container with
 that distribution's PHP, or Surý's or Remi's where the distribution lacks the
 version, renders a page, removes the package and checks that nothing is left.
 
+### Verifying downloads
+
+Every release carries `SHA256SUMS`, signed as `SHA256SUMS.asc`, and the rpm files
+are signed. The key is `php-plutobook-signing-key.asc` in each release and
+[`tools/keys/release-signing-key.asc`](tools/keys/release-signing-key.asc), with
+the fingerprint `D80D 92A4 A247 D7F6 BF32 4E1A BFE0 F7EC 429C 222F`.
+
+```sh
+gpg --import php-plutobook-signing-key.asc
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+
+sudo rpm --import php-plutobook-signing-key.asc   # EL: rpm -K then reports "signatures OK"
+rpm -K php-plutobook-1.2.0-1.php83.el9.x86_64.rpm
+```
+
 ## Verification and distribution
 
 `scripts/build-php` and `scripts/verify-php` with no arguments build and check
