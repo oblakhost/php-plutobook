@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# Package the portable modules from scripts/build-portable as deb and rpm files.
+# Usage: PLUTOBOOK_RELEASE_VERSION=1.2.0 scripts/build-packages
+#
+# Writes build/portable/packages/, one package per PHP minor version:
+#   php8.3-plutobook_1.2.0-1_amd64.deb            Debian and Ubuntu, distribution PHP or
+#                                                 Ondřej Surý's packages (same paths)
+#   php-plutobook-1.2.0-1.php83.el9.x86_64.rpm    EL8, EL9 and EL10 with PHP in /usr
+#                                                 (AppStream or Remi modular streams)
+# EL8 packages carry the el8 module, everything else the linux module.
+# PLUTOBOOK_PACKAGE_MAINTAINER sets the Maintainer and Packager fields.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+version=${PLUTOBOOK_RELEASE_VERSION:?Set PLUTOBOOK_RELEASE_VERSION, as for scripts/build-portable}
+maintainer=${PLUTOBOOK_PACKAGE_MAINTAINER:-php-plutobook <https://github.com/oblakhost/php-plutobook/issues>}
+dist="$root/build/portable/dist"
+out="$root/build/portable/packages"
+work="$root/build/packages"
+homepage=https://github.com/oblakhost/php-plutobook
+
+archive=$("$root/scripts/fetch-source" nfpm_2.49.0_Linux_x86_64.tar.gz)
+nfpm="$root/.local/nfpm/2.49.0/nfpm"
+if [[ ! -x $nfpm ]]; then
+  mkdir -p "${nfpm%/*}"
+  tar -xzf "$archive" -C "${nfpm%/*}" nfpm LICENSE.md
+fi
+rm -rf "$out" "$work"
+mkdir -p "$out" "$work/doc"
+
+# License notices for every package: this project's, then the bundled libraries'.
+cp "$root/LICENSE" "$root/THIRD_PARTY.md" "$work/doc/"
+cp -R "$dist/licenses" "$work/doc/licenses"
+{
+  echo "php-plutobook $version: $homepage"
+  echo
+  echo "The extension is licensed under the Apache License 2.0 (below). It contains"
+  echo "PlutoBook and the libraries listed in THIRD_PARTY.md, whose licenses are in the"
+  echo "licenses/ directory next to this file."
+  echo
+  cat "$root/LICENSE"
+} > "$work/doc/copyright"
+
+# The module must carry this release's version, which build-portable embedded.
+module_for() {
+  local variant=$1 minor=$2 module="$dist/$1/php$2/plutobook.so"
+  [[ -f $module && -f ${module%/*}/phpapi ]] || { echo "Missing $variant module for PHP $minor" >&2; exit 1; }
+  grep -aFq "php-plutobook/$version" "$module" ||
+    { echo "$module was not built as $version; set PLUTOBOOK_RELEASE_VERSION for build-portable" >&2; exit 1; }
+  echo "$module"
+}
+
+deb() {
+  local minor=$1 module api dir
+  module=$(module_for linux "$minor")
+  api=$(< "${module%/*}/phpapi")
+  dir="$work/deb-$minor"
+  mkdir -p "$dir"
+  # phpenmod links the ini into every SAPI's conf.d, phpdismod removes the links again.
+  cat > "$dir/postinst" <<SH
+#!/bin/sh
+set -e
+if [ "\$1" = configure ] && command -v phpenmod >/dev/null 2>&1; then
+    phpenmod -v $minor plutobook
+fi
+SH
+  cat > "$dir/prerm" <<SH
+#!/bin/sh
+set -e
+if [ "\$1" = remove ] && command -v phpdismod >/dev/null 2>&1; then
+    phpdismod -v $minor plutobook
+fi
+SH
+  cat > "$dir/nfpm.yaml" <<YAML
+name: php$minor-plutobook
+arch: amd64
+platform: linux
+version: $version
+release: "1"
+section: php
+priority: optional
+maintainer: $maintainer
+homepage: $homepage
+license: Apache-2.0
+description: |-
+  PlutoBook HTML-to-PDF extension for PHP $minor
+  Renders HTML and CSS to PDF. PlutoBook and its rendering libraries are linked
+  in; remote assets use the system libcurl.
+depends:
+  - php$minor-common
+  - phpapi-$api
+  - libc6 (>= 2.28)
+  - libstdc++6 (>= 8)
+  - libgcc-s1 | libgcc1
+  - libcurl4 (>= 7.68.0) | libcurl4t64 (>= 7.68.0)
+  - fontconfig-config
+  - fonts-dejavu-core
+contents:
+  - src: $module
+    dst: /usr/lib/php/$api/plutobook.so
+    file_info:
+      mode: 0644
+  - src: $root/tools/packages/deb/plutobook.ini
+    dst: /etc/php/$minor/mods-available/plutobook.ini
+    type: config
+  - src: $work/doc
+    dst: /usr/share/doc/php$minor-plutobook
+    type: tree
+scripts:
+  postinstall: $dir/postinst
+  preremove: $dir/prerm
+YAML
+  "$nfpm" package --config "$dir/nfpm.yaml" --packager deb --target "$out/"
+}
+
+rpm() {
+  local el=$1 minor=$2 variant=linux module api dir curl
+  curl='  - libcurl.so.4()(64bit)'
+  if [[ $el == 8 ]]; then
+    variant=el8
+    curl=$'  - libgnutls.so.30()(64bit)\n  - libnettle.so.6()(64bit)'
+  fi
+  module=$(module_for "$variant" "$minor")
+  api=$(< "${module%/*}/phpapi")
+  dir="$work/rpm-el$el-$minor"
+  mkdir -p "$dir"
+  cat > "$dir/nfpm.yaml" <<YAML
+name: php-plutobook
+arch: amd64
+platform: linux
+version: $version
+release: 1.php${minor/./}.el$el
+maintainer: $maintainer
+vendor: oblakhost
+homepage: $homepage
+license: Apache-2.0
+description: |-
+  PlutoBook HTML-to-PDF extension for PHP $minor. Renders HTML and CSS to PDF.
+  PlutoBook and its rendering libraries are linked in.
+depends:
+  - php(api) = $api-64
+  - fontconfig
+  - dejavu-sans-fonts
+$curl
+contents:
+  - src: $module
+    dst: /usr/lib64/php/modules/plutobook.so
+    file_info:
+      mode: 0755
+  - src: $root/tools/packages/rpm/40-plutobook.ini
+    dst: /etc/php.d/40-plutobook.ini
+    type: config|noreplace
+  - dst: /usr/share/licenses/php-plutobook
+    type: dir
+  - dst: /usr/share/doc/php-plutobook
+    type: dir
+  - src: $work/doc/LICENSE
+    dst: /usr/share/licenses/php-plutobook/LICENSE
+    type: license
+  - src: $work/doc/licenses
+    dst: /usr/share/licenses/php-plutobook/bundled
+    type: tree
+  - src: $work/doc/THIRD_PARTY.md
+    dst: /usr/share/doc/php-plutobook/THIRD_PARTY.md
+    type: doc
+rpm:
+  summary: PlutoBook HTML-to-PDF extension for PHP $minor
+  group: Development/Languages
+  packager: $maintainer
+  compression: xz
+YAML
+  "$nfpm" package --config "$dir/nfpm.yaml" --packager rpm --target "$out/"
+}
+
+for dir in "$dist"/linux/php*/; do
+  minor=${dir%/}
+  minor=${minor##*/php}
+  deb "$minor"
+  rpm 9 "$minor"
+  rpm 10 "$minor"
+  rpm 8 "$minor"
+done
+ls -l "$out"

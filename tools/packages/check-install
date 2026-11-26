@@ -1,0 +1,45 @@
+#!/bin/sh
+# Runs in a clean container (scripts/test-packages) with the package under /pkg/ and the
+# distribution's or a third-party repository's PHP available. Installs the package, renders
+# a page through the enabled extension, removes the package and looks for leftovers.
+set -eu
+# Package manager output only when a step fails.
+quiet() { "$@" > /tmp/step.log 2>&1 || { cat /tmp/step.log; return 1; }; }
+pkg=$(ls /pkg/*)
+case $pkg in
+  *.deb)
+    export DEBIAN_FRONTEND=noninteractive
+    quiet apt-get -qq update
+    install() { apt-get -qq install -y --no-install-recommends "$@"; }
+    remove() { apt-get -qq purge -y "$@"; }
+    name=$(dpkg-deb -f "$pkg" Package)
+    php_pkg=${name%-plutobook}-cli
+    ;;
+  *.rpm)
+    install() { dnf -y -q install "$@"; }
+    remove() { dnf -y -q remove "$@"; }
+    name=php-plutobook
+    php_pkg=php-cli
+    ;;
+esac
+quiet install "$php_pkg" poppler-utils
+quiet install "$pkg"
+php -m | grep -qx plutobook || { echo "plutobook is not enabled"; exit 1; }
+cat > /tmp/render.php <<'PHP'
+<?php
+$doc = new PlutoBook\Document();
+$doc->loadHtml('<h1>Zdravo, свете</h1><p>Package test</p>');
+$doc->writeToFile('/tmp/test.pdf');
+printf('PHP %s, %s, ', PHP_VERSION, (new ReflectionExtension('plutobook'))->getVersion());
+PHP
+php /tmp/render.php
+pdftotext /tmp/test.pdf - | head -1
+php --ri plutobook | grep -F 'HTTP client'
+quiet remove "$name"
+if php -m | grep -qx plutobook; then echo "plutobook still enabled after removal"; exit 1; fi
+left=$(ls -d /usr/lib/php/*/plutobook.so /usr/lib64/php/modules/plutobook.so \
+  /etc/php.d/40-plutobook.ini /etc/php/*/mods-available/plutobook.ini \
+  /etc/php/*/*/conf.d/*plutobook.ini /usr/share/doc/*plutobook \
+  /usr/share/licenses/php-plutobook 2> /dev/null || true)
+if [ -n "$left" ]; then echo "left after removal: $left"; exit 1; fi
+echo removed cleanly

@@ -36,6 +36,9 @@ a91f949bd46c322af33053b2c86bb75ce72d3edc765e65b08313647997e7e3de  https://github
 e23e8485fc85c14767c26b8ecff8737b3993d070ae459e9620f3b7afdb6b9977  https://github.com/mesonbuild/wrapdb/releases/download/libwebp_1.6.0-1/libwebp_1.6.0-1_patch.zip
 # Fontconfig 2.18 needs Meson 1.11 or later.
 ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743  https://files.pythonhosted.org/packages/f9/c9/8c9983f4f3d9c4e22fd76bcf8cd053e4472aefae45fd044669b6daa34b53/meson-1.12.1.tar.gz
+# nFPM for the deb and rpm packages (scripts/build-packages), checked against the
+# release's checksums.txt.
+2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7  https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_x86_64.tar.gz
 # libcurl 7.68.0, the oldest supported release: headers and link stub for the portable
 # module that uses the system libcurl, and the runtime its tests run against. Signature
 # checked 2026-11-26 with Daniel Stenberg's key 27EDEAF22F3ABCEB50DB9A125CC908FDB71E12C2.

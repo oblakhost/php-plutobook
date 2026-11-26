@@ -322,6 +322,25 @@ the PHP user's home directory. The scan took 15 ms with 38 fonts and 120 ms with
 263 fonts on AlmaLinux 10. A patch keeps it from printing "No writable cache
 directories" for every font directory; `FC_DEBUG=16` shows the message again.
 
+### deb and rpm packages
+
+`scripts/build-packages` wraps the portable modules with nFPM, one package per PHP
+minor version, in `build/portable/packages/`. It takes the same
+`PLUTOBOOK_RELEASE_VERSION` as the modules and refuses modules built without it.
+
+| Package | For | Installs |
+| --- | --- | --- |
+| `php8.3-plutobook_1.2.0-1_amd64.deb` | Debian and Ubuntu with the distribution's PHP or Ondřej Surý's | `/usr/lib/php/API/plutobook.so`, `/etc/php/8.3/mods-available/plutobook.ini`, enabled with `phpenmod` |
+| `php-plutobook-1.2.0-1.php83.el9.x86_64.rpm` | EL8, EL9 and EL10 with PHP in `/usr` (AppStream or Remi's modular streams) | `/usr/lib64/php/modules/plutobook.so`, `/etc/php.d/40-plutobook.ini` |
+
+Packages require the matching PHP API (`phpapi-API`, `php(api) = API-64`), the
+system font configuration with DejaVu fonts, and libcurl 7.68.0 or newer, or
+GnuTLS and Nettle for the EL8 packages, which carry the `el8` module. Restart
+PHP-FPM after installing. `PLUTOBOOK_PACKAGE_MAINTAINER` sets the Maintainer
+field. `scripts/test-packages` installs each package in a clean container with
+that distribution's PHP, or Surý's or Remi's where the distribution lacks the
+version, renders a page, removes the package and checks that nothing is left.
+
 ## Verification and distribution
 
 `scripts/build-php` and `scripts/verify-php` with no arguments build and check

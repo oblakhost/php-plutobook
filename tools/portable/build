@@ -308,6 +308,10 @@ install_module() {
   strip --strip-unneeded -o "$out/plutobook.so.tmp" "$so"
   (cd "$out" && objcopy --add-gnu-debuglink=plutobook.so.debug plutobook.so.tmp)
   mv -f "$out/plutobook.so.tmp" "$out/plutobook.so"
+  # The PHP API version, which the packages depend on (phpapi-N, php(api) = N-64).
+  sed -nE 's/^#define PHP_API_VERSION ([0-9]+)$/\1/p' \
+    "$root/.local/php/$version/nts/include/php/main/php.h" > "$out/phpapi"
+  grep -Eqx '[0-9]{8}' "$out/phpapi"
 }
 
 # What the module may link, export and require, so it loads on glibc 2.28 with GCC 8's
