@@ -9,8 +9,9 @@ cd "$build"
 [[ -d src && -n $(find . -name '*.gcda' -print -quit) ]] || {
   echo "Missing native unit execution data in $build" >&2; exit 1;
 }
-# Include unexecuted translation units. Limit the denominator to binding code.
+# Include unexecuted translation units. Limit the denominator to binding code. Search only
+# src/: configure's link test leaves a-conftest.gcno and .gcda behind, without its source.
 "$root/.local/qa/bin/gcovr" --root . --filter 'src/' --exclude '.*_arginfo\.h$' --include 'src/.*\.c$' \
   --json-summary "$report/summary.json" --html-details "$report/index.html" \
-  --print-summary --fail-under-line 85 .
+  --print-summary --fail-under-line 85 src
 jq -e '.line_total > 0 and .line_covered * 100 >= 85 * .line_total' "$report/summary.json" >/dev/null

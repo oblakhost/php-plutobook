@@ -22,6 +22,15 @@ for deb in "$cache"/archives/*.deb; do dpkg-deb -x "$deb" "$prefix"; done
 arch=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
 libdir="$prefix/usr/lib/$arch"
 includedir="$prefix/usr/include"
+# apt downloads only missing packages, so the runtime libraries the runner already has
+# (libcairo2, libharfbuzz0b, libcurl4t64, ...) are not staged and the -dev packages'
+# libfoo.so links dangle. Point them at the installed copies so -lfoo resolves.
+while IFS= read -r -d '' link; do
+  target=$(readlink "$link")
+  if [[ ! -e $link && $target != */* && -e /usr/lib/$arch/$target ]]; then
+    ln -sfn "/usr/lib/$arch/$target" "$link"
+  fi
+done < <(find "$libdir" -maxdepth 1 -type l -name '*.so' -print0)
 # Packages use /usr in their pkg-config files. Point only the staged copies
 # at the checkout, leaving already installed system packages discoverable.
 while IFS= read -r -d '' pc; do
