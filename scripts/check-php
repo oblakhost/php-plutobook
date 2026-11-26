@@ -11,7 +11,7 @@ while IFS= read -r -d '' file; do
   [[ $file == *.stub.php ]] || files+=("$file")
 done < <(git ls-files --cached --others --exclude-standard -z -- '*.php')
 if ((${#files[@]})); then
-  client="$TMPDIR/php-pdf-fcgi.inc"
+  client="$TMPDIR/php-plutobook-fcgi.inc"
   archive=$("$root/scripts/fetch-source" php-8.2.36.tar.xz)
   tar -xOf "$archive" php-8.2.36/sapi/fpm/tests/fcgi.inc > "$client"
   "$php" tools/qa/vendor/bin/phpcs --standard=phpcs.xml.dist "${files[@]}"

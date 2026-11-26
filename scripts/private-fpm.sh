@@ -7,7 +7,7 @@ start_private_fpm() {
   tar -xOf "$archive" php-8.2.36/sapi/fpm/tests/fcgi.inc > "$client"
 
   # A deeply nested checkout can exceed the Unix socket pathname limit.
-  socket_dir=$(mktemp -d /tmp/php-pdf-fpm.XXXXXXXX)
+  socket_dir=$(mktemp -d /tmp/php-plutobook-fpm.XXXXXXXX)
   socket="$socket_dir/fpm.sock"
   cat > "$run/fpm.conf" <<CONF
 [global]

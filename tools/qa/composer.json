@@ -1,6 +1,6 @@
 {
-  "name": "oblakhost/php-pdf-qa",
-  "description": "Developer tools for the php-pdf repository",
+  "name": "oblakhost/php-plutobook-qa",
+  "description": "Developer tools for the php-plutobook repository",
   "type": "project",
   "require-dev": {
     "phpstan/phpstan": "^2.1",

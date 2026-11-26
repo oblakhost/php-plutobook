@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<ruleset name="php-pdf">
+<ruleset name="php-plutobook">
     <description>PSR-12 for maintained PHP helpers, fixtures and examples.</description>
     <arg name="extensions" value="php"/>
     <arg value="ps"/>
