@@ -8,11 +8,11 @@
 #   php-plutobook-1.2.0-1.php83.el9.x86_64.rpm    EL8, EL9 and EL10 with PHP in /usr
 #                                                 (AppStream or Remi modular streams)
 # EL8 packages carry the el8 module, everything else the linux module.
-# PLUTOBOOK_PACKAGE_MAINTAINER sets the Maintainer and Packager fields.
+# PLUTOBOOK_PACKAGE_MAINTAINER overrides the Maintainer and Packager fields.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 version=${PLUTOBOOK_RELEASE_VERSION:?Set PLUTOBOOK_RELEASE_VERSION, as for scripts/build-portable}
-maintainer=${PLUTOBOOK_PACKAGE_MAINTAINER:-php-plutobook <https://github.com/oblakhost/php-plutobook/issues>}
+maintainer=${PLUTOBOOK_PACKAGE_MAINTAINER:-Sibin Grasic <sibin.grasic@oblak.studio>}
 dist="$root/build/portable/dist"
 out="$root/build/portable/packages"
 work="$root/build/packages"
