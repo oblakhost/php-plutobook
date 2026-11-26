@@ -1,5 +1,5 @@
 {
-  "name": "oblakhost/php-plutobook-qa",
+  "name": "oblakhost/ext-plutobook-qa",
   "description": "Developer tools for the php-plutobook repository",
   "type": "project",
   "require-dev": {

@@ -101,7 +101,7 @@ PHP-FPM and the native line-coverage gate run on Linux.
 
 ### Linux with PIE
 
-`pie install oblakhost/php-plutobook` installs the release's pre-built module on
+`pie install oblakhost/ext-plutobook` installs the release's pre-built module on
 x86_64 Linux with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6 and libcurl
 7.68.0 or newer: `php_plutobook-1.0.0_php8.4-x86_64-linux-glibc-nts.zip` for PHP 8.4.
 Fontconfig and a font package such as DejaVu must be installed. Elsewhere, for
@@ -115,7 +115,7 @@ whose libcurl is too old for remote assets, install the EL8 rpm instead.
 With [PIE](https://github.com/php/pie) configured for the target PHP installation, run
 
 ```sh
-pie install oblakhost/php-plutobook
+pie install oblakhost/ext-plutobook
 php --ri plutobook
 ```
 
@@ -482,7 +482,7 @@ and CSS Grid are roadmap items in the pinned renderer. Comparison with the
 original WHMCS/Gotenberg output awaits the real fixture.
 [PlutoBook 0.20.0 feature overview](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md)
 
-The PIE package name is `oblakhost/php-plutobook`. After the CI matrix passes,
+The PIE package name is `oblakhost/ext-plutobook`. After the CI matrix passes,
 each release gets the source archive, the Linux and Windows PIE binaries, the deb
 and rpm packages, the MPL sources and signed checksums. Packagist lists the
 package once the repository is registered there. PECL directs new extensions to PIE.
