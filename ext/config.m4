@@ -13,7 +13,8 @@ if test "$PHP_PLUTOBOOK" != "no"; then
 Install the libcurl development package (for example libcurl4-openssl-dev or
 libcurl-devel), or point PKG_CONFIG_PATH at its libcurl.pc.])])
   AC_MSG_CHECKING([whether libcurl supports HTTP and HTTPS])
-  plutobook_curl_protocols=`$PKG_CONFIG --variable=supported_protocols libcurl 2>/dev/null`
+  dnl pkgconf 1.4 (EL8) keeps the quotes around the list, so "HTTP HTTPS" would match neither.
+  plutobook_curl_protocols=`$PKG_CONFIG --variable=supported_protocols libcurl 2>/dev/null | tr -d '"'`
   case " $plutobook_curl_protocols " in
     *" HTTP "*)
       case " $plutobook_curl_protocols " in
