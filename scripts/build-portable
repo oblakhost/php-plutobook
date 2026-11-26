@@ -2,10 +2,11 @@
 # Build self-contained Linux x86_64 modules in an AlmaLinux 8 container.
 # Usage: scripts/build-portable [--skip-tests] [PHP_VERSION...]
 #
-# Writes build/portable/dist/{glibc,el8}/phpX.Y/plutobook.so, each with a separate
+# Writes build/portable/dist/{linux,el8}/phpX.Y/plutobook.so, each with a separate
 # plutobook.so.debug, for every pinned PHP release or the given ones. Logs go to
 # build/portable/root/artifacts/portable/. PLUTOBOOK_RELEASE_VERSION embeds a release
-# version, as in the PIE source archive. CONTAINER_ENGINE picks podman or docker.
+# version, as in the PIE source archive, and writes the PIE assets to
+# build/portable/release/. CONTAINER_ENGINE picks podman or docker.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 tests=()

@@ -1,0 +1,25 @@
+# Items of ICU's data package (icudt78l.dat) that the portable modules keep, as
+# extended regular expressions matching whole item names. tools/portable/build removes
+# the rest with icupkg, which fails if a kept item depends on a removed one.
+#
+# PlutoBook creates character, line and word break iterators for the document's lang,
+# case-maps with that locale, and reads Unicode properties and script names. Properties,
+# case mapping, bidi data and NFC are compiled into ICU's code; emoji properties are not.
+# Converters, collation, time zones, units, transliteration and display names are unused.
+# Release builds compile out PlutoBook's checks on iterator creation, so missing break
+# data would crash: keep every break iterator, dictionary and locale fallback resource.
+
+# Break rules, dictionaries (Thai, Lao, Khmer, Burmese, Chinese and Japanese) and the
+# per-locale break iterator bundles.
+brkitr/.*
+# Emoji properties, used to pick emoji presentation.
+uemoji\.icu
+# Locale resolution and fallback: the root bundle with its shared key pool, the installed
+# locale index, likely subtags and parent locales, aliases, and Unicode extension keys.
+root\.res
+pool\.res
+res_index\.res
+langInfo\.res
+supplementalData\.res
+metadata\.res
+keyTypeData\.res

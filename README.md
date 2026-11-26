@@ -273,19 +273,26 @@ scripts/build-portable 8.3.37     # one release; --skip-tests skips the PHPT and
 
 The build runs offline in an AlmaLinux 8 container with GCC 14 and tests each
 module there with the PHPT and invoice suites. It writes
-`build/portable/dist/VARIANT/phpX.Y/plutobook.so` (about 40 MB, most of it ICU
-data), a separate `plutobook.so.debug`, and the license notices of the bundled
+`build/portable/dist/VARIANT/phpX.Y/plutobook.so` (about 12 MB), a separate
+`plutobook.so.debug`, and the license notices of the bundled
 libraries in `build/portable/dist/licenses/`. Logs are in
-`build/portable/root/artifacts/portable/`. `PLUTOBOOK_RELEASE_VERSION` embeds a
-release version.
+`build/portable/root/artifacts/portable/`. Both variants use the system's glibc
+and differ in where libcurl comes from:
 
-- **`glibc`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
+- **`linux`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
   20.04 and later) with the system libcurl 7.68.0 or newer. It compiles against the
   libcurl 7.68.0 headers and its tests run against that release.
 - **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
-  than the binding supports. Red Hat backported its URL API, so a `glibc` module
+  than the binding supports. Red Hat backported its URL API, so a `linux` module
   loads there anyway; use `el8`. It contains libcurl 8.23.0 (HTTP and HTTPS only)
   and uses the system GnuTLS, since libcurl 8.18 and later need OpenSSL 3.
+
+`PLUTOBOOK_RELEASE_VERSION=1.2.0` embeds the release version and writes PIE's
+pre-packaged binaries to `build/portable/release/`, one per PHP minor version:
+`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` holds the `linux` module as
+`plutobook.so`, with `LICENSE`, `THIRD_PARTY.md` and the bundled libraries'
+`licenses/`. PIE names Linux binaries after the C library they need. PIE cannot tell
+EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only.
 
 Each module contains PlutoBook with the static font variations fix (plutobook#84),
 Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,
@@ -293,6 +300,10 @@ Fontconfig, libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, built from
 PlutoBook's Meson wraps. `tools/portable/wraps` replaces Cairo's 2024 libpng, zlib
 and pixman wraps with current releases. Versions are in `tools/sources.sha256`.
 With both fixes, resident memory stays flat over the invoice suite's 80 renders.
+ICU's data shrinks from 31.6 MB to 4.3 MB: PlutoBook needs only the break
+iterators with their dictionaries, emoji properties and locale fallback data
+(`tools/portable/icu-keep.txt`). Text in 25 languages and ten scripts renders the
+same as with the full data.
 
 The module exports only `get_module`, so its copies of these libraries stay
 separate from the ones gd, imagick or intl load. It needs only glibc, the GCC 8

@@ -4,13 +4,14 @@
 #
 # Builds PlutoBook and its rendering libraries as static PIC archives, then one module per
 # PHP release and variant. Each module is checked for what it links and exports, then the
-# PHPT and invoice suites run against it.
-#   glibc  Needs glibc 2.28 and the system libcurl 7.68.0 or newer. It compiles against the
-#          libcurl 7.68.0 headers, so it only sets options that release knows, and it is
-#          tested against that release.
+# PHPT and invoice suites run against it. Both variants use the system's glibc.
+#   linux  For glibc 2.28 or newer with the system libcurl 7.68.0 or newer. It compiles
+#          against the libcurl 7.68.0 headers, so it only sets options that release knows,
+#          and it is tested against that release. This is PIE's linux-glibc binary.
 #   el8    For EL8, whose curl 7.61.1 (with a backported URL API) is older than 7.68.0.
 #          libcurl 8.23.0 is linked in, with the system GnuTLS: curl 8.18 and later need
-#          OpenSSL 3, and EL8 has 1.1.1.
+#          OpenSSL 3, and EL8 has 1.1.1. The EL8 packages ship it.
+# With PLUTOBOOK_RELEASE_VERSION, the release assets go to /work/release.
 set -euo pipefail
 
 if [[ ${1:-} != --synced ]]; then
@@ -65,7 +66,7 @@ step() {
 part() {
   local name=$1 key
   shift
-  key=$({ declare -f "$name" bundle unpack; cat "$@"; } | sha256sum | cut -c1-16)
+  key=$({ declare -f "$name" bundle unpack icu_trim; cat "$@"; } | sha256sum | cut -c1-16)
   if [[ -f "$stack/$name.key" && $(< "$stack/$name.key") == "$key" ]]; then
     echo "== $name (up to date)"
     return
@@ -121,13 +122,45 @@ stack_plutobook() {
     -Dfontconfig:cache-dir=/var/cache/fontconfig -Dfontconfig:additional-fonts-dirs=no \
     -Dfontconfig:cache-build=disabled -Dfontconfig:nls=disabled \
     -Dfreetype2:bzip2=disabled -Dfreetype2:brotli=disabled -Dpixman:openmp=disabled
+  icu_trim
   python3 "$work/meson/meson.py" compile -C "$obj" -j "$jobs"
   python3 "$work/meson/meson.py" install -C "$obj" --no-rebuild --destdir "$src/stage"
   rm -rf "$stack/plutobook"
   cp -a "$src/stage/opt/plutobook" "$stack/plutobook"
+  local reduced built
+  reduced=$(stat -c %s "$src/source/subprojects/icu/source/data/in/icudt78l.dat")
+  built=$(stat -c %s "$stack/plutobook/lib/libsicudata.a")
+  if ((built > 2 * reduced)); then
+    echo "libsicudata.a ($built bytes) was not built from the reduced ICU data ($reduced bytes)" >&2
+    return 1
+  fi
 }
 
-# Headers and link stub for the glibc variant, and its test runtime. GCC 14 rejects code
+# Reduce ICU's data package (31.6 MB) to the items in tools/portable/icu-keep.txt before
+# libsicudata.a is built from it. Runs inside stack_plutobook, after Meson set up ICU.
+icu_trim() {
+  local data="$src/source/subprojects/icu/source/data/in" trim="$src/icu-trim" pattern
+  local icupkg="$obj/subprojects/icu/source/tools/icupkg/icupkg"
+  python3 "$work/meson/meson.py" compile -C "$obj" -j "$jobs" subprojects/icu/source/tools/icupkg/icupkg
+  mkdir -p "$trim/out"
+  "$icupkg" -l -o "$trim/all.txt" "$data/icudt78l.dat"
+  grep -vE '^(#|$)' "$root/tools/portable/icu-keep.txt" > "$trim/keep.txt"
+  # Every pattern must still match, so a renamed item in a newer ICU cannot slip away.
+  while read -r pattern; do
+    grep -qxE "$pattern" "$trim/all.txt" || { echo "No ICU data item matches $pattern" >&2; return 1; }
+  done < "$trim/keep.txt"
+  grep -vxE -f "$trim/keep.txt" "$trim/all.txt" > "$trim/remove.txt"
+  # icupkg fails if a kept item depends on a removed one. The package keeps its name,
+  # which is also the prefix of its item names.
+  "$icupkg" -r "$trim/remove.txt" "$data/icudt78l.dat" "$trim/out/icudt78l.dat"
+  "$icupkg" -l "$trim/out/icudt78l.dat"
+  mv -f "$trim/out/icudt78l.dat" "$data/icudt78l.dat"
+  # The data target names the package only on its command line, so Ninja would keep an
+  # assembly file already generated from the full package (icupkg links ICU's data).
+  rm -f "$obj/subprojects/icu/source/data/icudt78.S"
+}
+
+# Headers and link stub for the linux variant, and its test runtime. GCC 14 rejects code
 # of this age, so the system GCC 8 builds it.
 stack_curl_minimum() {
   local src="$work/curl-7.68.0" prefix="$stack/curl-7.68.0"
@@ -196,10 +229,10 @@ stack_bundles() {
     [[ -f "$lib/lib$name.a" ]] || { echo "Missing static library lib$name.a" >&2; exit 1; }
     archives+=("$lib/lib$name.a")
   done
-  bundle "$stack/lib/libplutobook-glibc.a" "${archives[@]}"
+  bundle "$stack/lib/libplutobook-linux.a" "${archives[@]}"
   bundle "$stack/lib/libplutobook-el8.a" "${archives[@]}" "$stack/curl-8.23.0/lib/libcurl.a"
   # configure takes the include paths from these and checks the versions; module() links.
-  for variant in glibc el8; do
+  for variant in linux el8; do
     pc="$stack/pkgconfig/$variant"
     mkdir -p "$pc"
     cat > "$pc/plutobook.pc" <<PC
@@ -210,7 +243,7 @@ Cflags: -I$stack/plutobook/include/plutobook
 Libs: -L$stack/lib -lplutobook-$variant -lstdc++ -lm -ldl -lrt
 PC
   done
-  cp "$stack/curl-7.68.0/lib/pkgconfig/libcurl.pc" "$stack/pkgconfig/glibc/libcurl.pc"
+  cp "$stack/curl-7.68.0/lib/pkgconfig/libcurl.pc" "$stack/pkgconfig/linux/libcurl.pc"
   # libcurl itself is in the el8 archive. GnuTLS and Nettle stay system libraries.
   cat > "$stack/pkgconfig/el8/libcurl.pc" <<PC
 supported_protocols="HTTP HTTPS"
@@ -255,7 +288,7 @@ module() {
   make -j"$jobs" $objects
   for lo in $objects; do pic+=("$(dirname "$lo")/.libs/$(basename "$lo" .lo).o"); done
   case $variant in
-    glibc) system=("$stack/curl-7.68.0/lib/libcurl.so") ;;
+    linux) system=("$stack/curl-7.68.0/lib/libcurl.so") ;;
     el8) system=(-lgnutls -lnettle) ;;
   esac
   mkdir -p modules
@@ -283,7 +316,7 @@ check_module() {
   local so=$1 variant=$2 allowed dynamic lib exports kind limit newest
   allowed=" libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 libstdc++.so.6 libgcc_s.so.1 ld-linux-x86-64.so.2 "
   case $variant in
-    glibc) allowed+="libcurl.so.4 " ;;
+    linux) allowed+="libcurl.so.4 " ;;
     el8) allowed+="libgnutls.so.30 libnettle.so.6 " ;;
   esac
   dynamic=$(readelf -dW "$so")
@@ -319,8 +352,8 @@ check_module() {
 test_module() {
   local version=$1 variant=$2 so="$dist/$2/php${1%.*}/plutobook.so" php
   php="$root/.local/php/$version/nts/bin/php"
-  # The glibc variant runs against the oldest libcurl it supports.
-  if [[ $variant == glibc ]]; then export LD_LIBRARY_PATH="$stack/curl-7.68.0/lib"; fi
+  # The linux variant runs against the oldest libcurl it supports.
+  if [[ $variant == linux ]]; then export LD_LIBRARY_PATH="$stack/curl-7.68.0/lib"; fi
   "$php" -n -d "extension=$so" --ri plutobook
   if [[ -n $release ]]; then
     "$php" -n -d "extension=$so" --ri plutobook | grep -Fq "$release"
@@ -332,23 +365,65 @@ test_module() {
   unset LD_LIBRARY_PATH
 }
 
+# PIE's pre-packaged binary for one PHP release, in the name PIE looks for:
+# php_plutobook-VERSION_phpX.Y-x86_64-linux-glibc-nts.zip with plutobook.so at the root,
+# next to this project's license, the third-party notices and the bundled licenses.
+# Fixed timestamps keep the archive the same for the same module.
+release_asset() {
+  local version=$1 out=/work/release
+  mkdir -p "$out"
+  python3 - "$out/php_plutobook-${release}_php${version%.*}-x86_64-linux-glibc-nts.zip" \
+    "$dist/linux/php${version%.*}/plutobook.so" "$root/LICENSE" "$root/THIRD_PARTY.md" \
+    "$dist/licenses" <<'PY'
+import os
+import sys
+import zipfile
+
+out, module, license_file, notices, licenses = sys.argv[1:]
+
+
+def add(archive, path, name, mode):
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.external_attr = (0o100000 | mode) << 16
+    info.compress_type = zipfile.ZIP_DEFLATED
+    with open(path, "rb") as source:
+        archive.writestr(info, source.read())
+
+
+with zipfile.ZipFile(out + ".tmp", "w") as archive:
+    add(archive, module, "plutobook.so", 0o755)
+    add(archive, license_file, "LICENSE", 0o644)
+    add(archive, notices, "THIRD_PARTY.md", 0o644)
+    for directory, subdirectories, files in os.walk(licenses):
+        subdirectories.sort()
+        for name in sorted(files):
+            path = os.path.join(directory, name)
+            add(archive, path, os.path.join("licenses", os.path.relpath(path, licenses)), 0o644)
+os.replace(out + ".tmp", out)
+PY
+}
+
 pinned=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
 if ((${#versions[@]} == 0)); then mapfile -t versions <<<"$pinned"; fi
-part stack_plutobook "$root"/tools/patches/*.patch "$root"/tools/portable/wraps/*.wrap
+part stack_plutobook "$root"/tools/patches/*.patch "$root"/tools/portable/wraps/*.wrap \
+  "$root/tools/portable/icu-keep.txt"
 part stack_curl_minimum /dev/null
 part stack_curl_el8 "$stack/stack_plutobook.key"
 part stack_bundles "$stack"/stack_{plutobook,curl_minimum,curl_el8}.key
 part stack_licenses "$stack"/stack_{plutobook,curl_el8}.key
 step test-fonts "$root/scripts/stage-test-fonts" "$stack/fonts"
-rm -rf "$dist/licenses"
+rm -rf "$dist/licenses" /work/release
+find "$dist" -mindepth 1 -maxdepth 1 ! -name linux ! -name el8 -exec rm -rf {} +
 cp -R "$stack/licenses" "$dist/licenses"
 for version in "${versions[@]}"; do
   step "php-$version" "$root/scripts/build-php" "$version" nts
-  for variant in glibc el8; do
+  for variant in linux el8; do
     step "module-$version-$variant" module "$version" "$variant"
     install_module "$version" "$variant"
     check_module "$dist/$variant/php${version%.*}/plutobook.so" "$variant"
     step "test-$version-$variant" test_module "$version" "$variant"
   done
+  if [[ -n $release ]]; then release_asset "$version"; fi
 done
 ls -l "$dist"/*/php*/plutobook.so
+if [[ -n $release ]]; then ls -l /work/release; fi
