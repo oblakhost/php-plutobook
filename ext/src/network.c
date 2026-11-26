@@ -25,19 +25,34 @@ typedef struct {
 	char blocked_address[INET6_ADDRSTRLEN];
 } php_plutobook_download;
 
+// The libcurl loaded at run time can be older than the headers. EL8's libcurl 7.61.1 has
+// a backported URL API, so a module built for newer systems loads there. Remote assets
+// then stay off: the module still renders, and failing startup would stop PHP itself.
+static bool php_plutobook_curl_supported;
+static char php_plutobook_curl_unsupported[64];
+
 bool php_plutobook_network_startup(void)
 {
+	const curl_version_info_data *curl = curl_version_info(CURLVERSION_NOW);
+	php_plutobook_curl_supported = curl->version_num >= 0x074400;
+	if (!php_plutobook_curl_supported) {
+		snprintf(php_plutobook_curl_unsupported, sizeof(php_plutobook_curl_unsupported),
+		         "libcurl %s is older than 7.68.0", curl->version);
+		return true;
+	}
 	return curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK;
 }
 
 void php_plutobook_network_shutdown(void)
 {
-	curl_global_cleanup();
+	if (php_plutobook_curl_supported) {
+		curl_global_cleanup();
+	}
 }
 
 const char *php_plutobook_network_version(void)
 {
-	return curl_version();
+	return php_plutobook_curl_supported ? curl_version() : php_plutobook_curl_unsupported;
 }
 
 void php_plutobook_network_release(php_plutobook_document *doc)
@@ -432,6 +447,11 @@ plutobook_resource_data_t *php_plutobook_fetch_remote(php_plutobook_document *do
 	const zend_long document_timeout = PLUTOBOOK_G(http_document_timeout);
 	const int64_t document_ms =
 	    document_timeout ? document_timeout * 1000 - doc->network_ms : INT64_MAX;
+	if (!php_plutobook_curl_supported) {
+		snprintf(detail, detail_size, "%s", php_plutobook_curl_unsupported);
+		*status = PHP_PLUTOBOOK_ASSET_NETWORK_ERROR;
+		return NULL;
+	}
 	if (!bytes_left) {
 		snprintf(detail, detail_size, "plutobook.max_total_asset_size reached");
 		*status = PHP_PLUTOBOOK_ASSET_TOO_LARGE;

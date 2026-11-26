@@ -169,7 +169,7 @@ not empty.
 | `redirect-error` | Too many redirects, a redirect from https to http, or to another scheme. |
 | `tls-error` | The TLS handshake or certificate verification failed. |
 | `timeout` | The request exceeded `plutobook.http_timeout`, or PHP's time limit passed. |
-| `network-error` | DNS, connection and other transfer failures. |
+| `network-error` | DNS, connection and other transfer failures, or a libcurl older than 7.68.0. |
 
 PlutoBook 0.20.0 also prints one `WARNING:` line per skipped resource to the
 process's stderr. The binding cannot suppress that output. The line names the
@@ -255,7 +255,9 @@ dependencies through `pkg-config`:
   the binding fetches remote assets itself and never uses PlutoBook's HTTP client.
 - **libcurl 7.68.0 or newer with HTTP and HTTPS** (`libcurl.pc`, for example
   `libcurl4-openssl-dev` or `libcurl-devel`). `configure` stops with an error if
-  libcurl is missing or lacks either protocol.
+  libcurl is missing or lacks either protocol. If the libcurl loaded at run time is
+  older than 7.68.0, remote assets are skipped as `network-error` and `--ri
+  plutobook` shows the version found.
 
 Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
 `configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
@@ -283,9 +285,10 @@ and differ in where libcurl comes from:
   20.04 and later) with the system libcurl 7.68.0 or newer. It compiles against the
   libcurl 7.68.0 headers and its tests run against that release.
 - **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
-  than the binding supports. Red Hat backported its URL API, so a `linux` module
-  loads there anyway; use `el8`. It contains libcurl 8.23.0 (HTTP and HTTPS only)
-  and uses the system GnuTLS, since libcurl 8.18 and later need OpenSSL 3.
+  than the binding supports. A `linux` module still loads and renders there, but
+  skips remote assets as `network-error`. The `el8` module contains libcurl
+  8.23.0 (HTTP and HTTPS only) and uses the system GnuTLS, since libcurl 8.18 and
+  later need OpenSSL 3.
 
 `PLUTOBOOK_RELEASE_VERSION=1.2.0` embeds the release version and writes PIE's
 pre-packaged binaries to `build/portable/release/`, one per PHP minor version:

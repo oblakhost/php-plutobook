@@ -355,6 +355,24 @@ test_module() {
   # The linux variant runs against the oldest libcurl it supports.
   if [[ $variant == linux ]]; then export LD_LIBRARY_PATH="$stack/curl-7.68.0/lib"; fi
   "$php" -n -d "extension=$so" --ri plutobook
+  if [[ $variant == linux ]]; then
+    # With EL8's own libcurl 7.61.1 the module loads and renders, but keeps remote
+    # assets off and says why.
+    local degraded expected='%PDF- network-error: libcurl 7.61.1 is older than 7.68.0'
+    # shellcheck disable=SC2016 # PHP code.
+    degraded=$(env -u LD_LIBRARY_PATH "$php" -n -d "extension=$so" -r '
+      $doc = new PlutoBook\Document();
+      $doc->loadHtml("<p>Text</p><img src=\"https://example.test/a.png\">", null, "", null, ["example.test"]);
+      $pdf = $doc->toPdf();
+      $error = $doc->getResourceErrors()[0] ?? ["reason" => "-", "detail" => "-"];
+      echo substr($pdf, 0, 5), " ", $error["reason"], ": ", $error["detail"];' 2>/dev/null)
+    echo "$degraded"
+    env -u LD_LIBRARY_PATH "$php" -n -d "extension=$so" --ri plutobook | grep -F 'HTTP client'
+    if [[ $degraded != "$expected" ]]; then
+      echo "Expected on EL8's libcurl: $expected" >&2
+      return 1
+    fi
+  fi
   if [[ -n $release ]]; then
     "$php" -n -d "extension=$so" --ri plutobook | grep -Fq "$release"
   fi
