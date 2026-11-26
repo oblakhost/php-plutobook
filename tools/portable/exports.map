@@ -1,0 +1,9 @@
+/* PHP finds an extension through get_module() alone. PHP loads extensions with
+ * RTLD_GLOBAL and RTLD_DEEPBIND, so exported Cairo, FreeType or ICU symbols would
+ * collide with gd, imagick or intl. Everything else stays local. */
+{
+  global:
+    get_module;
+  local:
+    *;
+};

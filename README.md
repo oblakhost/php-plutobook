@@ -261,6 +261,53 @@ Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply t
 `configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
 `scripts/build-plutobook` passes `LDFLAGS` on to the renderer's link step.
 
+### Portable Linux modules
+
+Binary releases and packages use a self-contained `plutobook.so` per PHP minor
+version for Linux x86_64. Build them with Podman or Docker:
+
+```sh
+scripts/build-portable            # every pinned PHP release
+scripts/build-portable 8.3.37     # one release; --skip-tests skips the PHPT and invoice suites
+```
+
+The build runs offline in an AlmaLinux 8 container with GCC 14 and tests each
+module there with the PHPT and invoice suites. It writes
+`build/portable/dist/VARIANT/phpX.Y/plutobook.so` (about 40 MB, most of it ICU
+data), a separate `plutobook.so.debug`, and the license notices of the bundled
+libraries in `build/portable/dist/licenses/`. Logs are in
+`build/portable/root/artifacts/portable/`. `PLUTOBOOK_RELEASE_VERSION` embeds a
+release version.
+
+- **`glibc`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
+  20.04 and later) with the system libcurl 7.68.0 or newer. It compiles against the
+  libcurl 7.68.0 headers and its tests run against that release.
+- **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
+  than the binding supports. Red Hat backported its URL API, so a `glibc` module
+  loads there anyway; use `el8`. It contains libcurl 8.23.0 (HTTP and HTTPS only)
+  and uses the system GnuTLS, since libcurl 8.18 and later need OpenSSL 3.
+
+Each module contains PlutoBook with the static font variations fix (plutobook#84),
+Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,
+Fontconfig, libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, built from
+PlutoBook's Meson wraps. `tools/portable/wraps` replaces Cairo's 2024 libpng, zlib
+and pixman wraps with current releases. Versions are in `tools/sources.sha256`.
+With both fixes, resident memory stays flat over the invoice suite's 80 renders.
+
+The module exports only `get_module`, so its copies of these libraries stay
+separate from the ones gd, imagick or intl load. It needs only glibc, the GCC 8
+`libstdc++` and `libgcc_s`, and libcurl or GnuTLS from the system. The build checks
+that, together with symbol versions, full RELRO, a non-executable stack and the
+absence of run paths.
+
+The bundled Fontconfig reads the system configuration in `/etc/fonts` and needs a
+font package such as DejaVu. Its cache format (version 12) differs from the
+system Fontconfig's, so it scans the font directories once per PHP process unless
+it can write its own cache, for example in `/var/cache/fontconfig` as root or in
+the PHP user's home directory. The scan took 15 ms with 38 fonts and 120 ms with
+263 fonts on AlmaLinux 10. A patch keeps it from printing "No writable cache
+directories" for every font directory; `FC_DEBUG=16` shows the message again.
+
 ## Verification and distribution
 
 `scripts/build-php` and `scripts/verify-php` with no arguments build and check
@@ -277,8 +324,8 @@ PHP and native quality checks, including the 85% unit line-coverage gate.
 Known issue: Cairo 1.18 leaks about 14 KB of PDF font state per rendered page,
 which shows up as roughly 18 KiB of resident memory per invoice in a long-lived
 worker. The leak is in Cairo, called from PlutoBook, not in this binding.
-`tools/asan/render-loop.c` reproduces it without PHP. Recycle FPM workers with
-`pm.max_requests` until a fixed renderer stack is available.
+`tools/asan/render-loop.c` reproduces it without PHP. The portable modules carry
+fixes for it. With a system Cairo, recycle FPM workers with `pm.max_requests`.
 
 The Linux NTS matrix covers synthetic invoices. ZTS is unsupported. JavaScript
 and CSS Grid are roadmap items in the pinned renderer. Comparison with the

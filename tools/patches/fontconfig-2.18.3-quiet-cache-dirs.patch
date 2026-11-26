@@ -1,0 +1,13 @@
+--- a/src/fccache.c
++++ b/src/fccache.c
+@@ -1465,7 +1465,9 @@
+ 	    FcStrSetAdd (cpath, d);
+ 	}
+     }
+-    if (!test_dir) {
++    /* A bundled Fontconfig cannot use the system's caches of another version, so it
++     * scans the fonts when no cache directory is writable. Say so only when asked. */
++    if (!test_dir && (FcDebug() & FC_DBG_CACHE)) {
+ 	FcStrList *l;
+ 	FcChar8   *s;
+ 

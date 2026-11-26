@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Stage the pinned DejaVu test fonts under PREFIX, with PREFIX/etc/fonts/fonts.conf listing
+# only them. The tests set FONTCONFIG_FILE to it and find the fonts relative to it.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+prefix=${1:?Usage: stage-test-fonts PREFIX}
+archive=$("$root/scripts/fetch-source" dejavu-fonts-ttf-2.37.tar.bz2)
+src="$root/build/fonts/dejavu-2.37"
+if [[ ! -f "$src/.unpacked" ]]; then
+  mkdir -p "$src"
+  tar -xf "$archive" --strip-components=1 -C "$src"
+  touch "$src/.unpacked"
+fi
+mkdir -p "$prefix/share/fonts/dejavu" "$prefix/etc/fonts" "$prefix/var/cache/fontconfig" \
+  "$prefix/share/licenses/dejavu"
+cp -f "$src/ttf"/DejaVuSans{,-Bold}.ttf "$prefix/share/fonts/dejavu/"
+cp -f "$src"/{LICENSE,AUTHORS} "$prefix/share/licenses/dejavu/"
+# Fontconfig versions differ on relative cache directories. Anchor both paths.
+python3 - "$prefix" <<'PY'
+from pathlib import Path
+import sys
+import xml.etree.ElementTree as ET
+
+prefix = Path(sys.argv[1])
+config = ET.Element("fontconfig")
+ET.SubElement(config, "dir").text = str(prefix / "share/fonts/dejavu")
+ET.SubElement(config, "cachedir").text = str(prefix / "var/cache/fontconfig")
+ET.ElementTree(config).write(prefix / "etc/fonts/fonts.conf", encoding="utf-8", xml_declaration=True)
+PY

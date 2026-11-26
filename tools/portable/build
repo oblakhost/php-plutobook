@@ -1,0 +1,354 @@
+#!/usr/bin/env bash
+# Runs in the image from tools/portable/Containerfile. scripts/build-portable starts it with
+# the checkout at /src (read-only), the build state at /work and no network access.
+#
+# Builds PlutoBook and its rendering libraries as static PIC archives, then one module per
+# PHP release and variant. Each module is checked for what it links and exports, then the
+# PHPT and invoice suites run against it.
+#   glibc  Needs glibc 2.28 and the system libcurl 7.68.0 or newer. It compiles against the
+#          libcurl 7.68.0 headers, so it only sets options that release knows, and it is
+#          tested against that release.
+#   el8    For EL8, whose curl 7.61.1 (with a backported URL API) is older than 7.68.0.
+#          libcurl 8.23.0 is linked in, with the system GnuTLS: curl 8.18 and later need
+#          OpenSSL 3, and EL8 has 1.1.1.
+set -euo pipefail
+
+if [[ ${1:-} != --synced ]]; then
+  # Copy the checkout next to the build state, which stays in place between runs. The
+  # explicit excludes protect that state before the copy's own .gitignore exists.
+  rsync -a --delete --exclude=/.git --exclude=/build/ --exclude=/.local/ --exclude=/.cache/ \
+    --exclude=/artifacts/ --filter=':- .gitignore' /src/ /work/root/
+  exec /work/root/tools/portable/build --synced "$@"
+fi
+shift
+tests=1
+if [[ ${1:-} == --skip-tests ]]; then tests=0; shift; fi
+versions=("$@")
+root=/work/root
+dist=/work/dist
+release=${PLUTOBOOK_RELEASE_VERSION:-}
+stack="$root/.local/portable"
+work="$root/build/portable"
+logs="$root/artifacts/portable"
+fetch="$root/scripts/fetch-source"
+mkdir -p "$stack" "$work" "$logs" "$dist"
+if [[ -n ${JOBS:-} ]]; then
+  jobs=$JOBS
+else
+  memory_jobs=$(awk '/MemAvailable:/ {print int($2 / 1048576)}' /proc/meminfo)
+  jobs=$(nproc)
+  jobs=$((jobs < memory_jobs ? jobs : memory_jobs))
+  jobs=$((jobs > 8 ? 8 : jobs))
+  jobs=$((jobs > 0 ? jobs : 1))
+fi
+# Hardened, with sections the final link can drop when nothing uses them.
+cflags="-O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffunction-sections -fdata-sections"
+
+# Run one step in a subshell with its output in artifacts/portable/NAME.log. Bash ignores
+# set -e in a function called from a condition, so the status is checked afterwards.
+step() {
+  local name=$1 status
+  shift
+  echo "== $name"
+  set +e
+  (set -e; "$@") > "$logs/$name.log" 2>&1
+  status=$?
+  set -e
+  if ((status != 0)); then
+    tail -40 "$logs/$name.log" >&2
+    echo "Failed: $name (artifacts/portable/$name.log)" >&2
+    exit 1
+  fi
+}
+
+# Build a part of the stack again when its function or one of its input files changes.
+part() {
+  local name=$1 key
+  shift
+  key=$({ declare -f "$name" bundle unpack; cat "$@"; } | sha256sum | cut -c1-16)
+  if [[ -f "$stack/$name.key" && $(< "$stack/$name.key") == "$key" ]]; then
+    echo "== $name (up to date)"
+    return
+  fi
+  rm -f "$stack/$name.key"
+  step "$name" "$name"
+  echo "$key" > "$stack/$name.key"
+}
+
+unpack() {
+  local name=$1 dir=$2
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  tar -xf "$("$fetch" "$name")" --strip-components=1 -C "$dir"
+}
+
+# PlutoBook builds the rendering libraries from its pinned Meson wraps, as static libraries.
+# Its wrap for Cairo already carries the font options leak fix (cairo#1000). Build tools
+# such as gperf come from the image; check_module catches a library taken from it.
+stack_plutobook() {
+  local src="$work/plutobook" wrap name
+  local obj="$src/obj"
+  rm -rf "$src"
+  unpack meson-1.12.1.tar.gz "$work/meson"
+  unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$src/source"
+  # Font variations only for variable fonts (plutobook#84), which avoids the Cairo leak.
+  patch -p0 -d "$src/source" < "$root/tools/patches/plutobook-0.20.0-static-font-variations.patch"
+  # The wraps replace Cairo's outdated nested wraps. The Fontconfig wrap adds a patch: a
+  # bundled copy cannot use the system's caches, so a process without a writable cache
+  # directory would print an error for every font directory.
+  cp "$root"/tools/portable/wraps/*.wrap "$src/source/subprojects/"
+  cp "$root/tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch" "$src/source/subprojects/packagefiles/"
+  # Meson takes wrap sources from packagecache after checking their hashes.
+  mkdir -p "$src/source/subprojects/packagecache"
+  for wrap in "$src/source/subprojects"/*.wrap; do
+    # PlutoBook's HTTP client stays off: the binding fetches remote assets itself.
+    [[ $wrap == */curl.wrap ]] && continue
+    while read -r name; do
+      cp "$("$fetch" "$name")" "$src/source/subprojects/packagecache/$name"
+    done < <(sed -nE 's/^(source|patch)_filename *= *//p' "$wrap")
+  done
+  # Fontconfig reads the server's configuration and caches, not paths in this container.
+  # -fPIC as well: libjpeg-turbo's wrap builds its SIMD code without PIC for static builds.
+  CFLAGS="$cflags -fPIC" CXXFLAGS="$cflags -fPIC" \
+    python3 "$work/meson/meson.py" setup "$obj" "$src/source" \
+    --prefix=/opt/plutobook --libdir=lib --buildtype=release --default-library=static \
+    --wrap-mode=nodownload -Db_staticpic=true \
+    --force-fallback-for=cairo,pixman-1,libpng,zlib,freetype2,fontconfig,harfbuzz,expat,icu,libturbojpeg,libwebp \
+    -Dcurl=disabled -Dturbojpeg=enabled -Dwebp=enabled \
+    -Dtools=disabled -Dexamples=disabled -Dtests=disabled \
+    -Dfontconfig:baseconfig-dir=/etc/fonts -Dfontconfig:config-dir=/etc/fonts/conf.d \
+    -Dfontconfig:template-dir=/usr/share/fontconfig/conf.avail \
+    -Dfontconfig:cache-dir=/var/cache/fontconfig -Dfontconfig:additional-fonts-dirs=no \
+    -Dfontconfig:cache-build=disabled -Dfontconfig:nls=disabled \
+    -Dfreetype2:bzip2=disabled -Dfreetype2:brotli=disabled -Dpixman:openmp=disabled
+  python3 "$work/meson/meson.py" compile -C "$obj" -j "$jobs"
+  python3 "$work/meson/meson.py" install -C "$obj" --no-rebuild --destdir "$src/stage"
+  rm -rf "$stack/plutobook"
+  cp -a "$src/stage/opt/plutobook" "$stack/plutobook"
+}
+
+# Headers and link stub for the glibc variant, and its test runtime. GCC 14 rejects code
+# of this age, so the system GCC 8 builds it.
+stack_curl_minimum() {
+  local src="$work/curl-7.68.0" prefix="$stack/curl-7.68.0"
+  rm -rf "$prefix"
+  unpack curl-7.68.0.tar.xz "$src"
+  cd "$src"
+  CC=/usr/bin/gcc ./configure --prefix="$prefix" --disable-static --enable-shared \
+    --with-ssl --with-zlib --without-libidn2 --without-nghttp2 --without-brotli --without-zstd \
+    --without-libpsl --without-librtmp --without-libssh2 --disable-ldap --disable-ldaps \
+    --disable-manual --with-ca-bundle=/etc/pki/tls/certs/ca-bundle.crt
+  make -j"$jobs"
+  make install
+}
+
+# HTTP and HTTPS only, for the el8 variant: static, PIC, GnuTLS and Nettle from the system,
+# and the bundled zlib. The CA bundle is the EL8 one.
+stack_curl_el8() {
+  local src="$work/curl-8.23.0" prefix="$stack/curl-8.23.0" zlib="$stack/plutobook"
+  rm -rf "$prefix"
+  unpack curl-8.23.0.tar.gz "$src"
+  CFLAGS="$cflags" cmake -G Ninja -S "$src" -B "$src/build" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DBUILD_CURL_EXE=OFF -DBUILD_TESTING=OFF \
+    -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF -DENABLE_CURL_MANUAL=OFF -DPICKY_COMPILER=OFF \
+    -DCURL_USE_OPENSSL=OFF -DCURL_USE_GNUTLS=ON \
+    -DCURL_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt -DCURL_CA_PATH=none \
+    -DCURL_ZLIB=ON -DZLIB_INCLUDE_DIR="$zlib/include" -DZLIB_LIBRARY="$zlib/lib/libz.a" \
+    -DCURL_DISABLE_DICT=ON -DCURL_DISABLE_FILE=ON -DCURL_DISABLE_FTP=ON -DCURL_DISABLE_GOPHER=ON \
+    -DCURL_DISABLE_IMAP=ON -DCURL_DISABLE_IPFS=ON -DCURL_DISABLE_LDAP=ON -DCURL_DISABLE_LDAPS=ON \
+    -DCURL_DISABLE_MQTT=ON -DCURL_DISABLE_POP3=ON -DCURL_DISABLE_RTSP=ON -DCURL_DISABLE_SMTP=ON \
+    -DCURL_DISABLE_TELNET=ON -DCURL_DISABLE_TFTP=ON -DCURL_DISABLE_WEBSOCKETS=ON \
+    -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DUSE_NGHTTP2=OFF -DUSE_LIBIDN2=OFF -DCURL_USE_LIBPSL=OFF \
+    -DCURL_USE_LIBSSH2=OFF -DENABLE_UNIX_SOCKETS=OFF
+  cmake --build "$src/build" --parallel "$jobs"
+  cmake --install "$src/build"
+}
+
+# License notices of everything linked into the modules, one directory per component and
+# version, as the packages ship them. Version names come from the wrap directories.
+stack_licenses() {
+  local out="$stack/licenses" sub="$work/plutobook/source/subprojects" dir name file
+  rm -rf "$out"
+  mkdir -p "$out/plutobook-0.20.0"
+  cp -R "$work/plutobook/source"/{LICENSE,CREDITS,licenses} "$out/plutobook-0.20.0/"
+  for dir in "$sub"/*/; do
+    name=$(basename "$dir")
+    [[ $name == packagecache || $name == packagefiles ]] && continue
+    mkdir -p "$out/$name"
+    for file in "$dir"{COPYING*,LICENSE*,LICENCE*,PATENTS,README.ijg,docs/FTL.TXT,docs/GPLv2.TXT}; do
+      if [[ -f $file ]]; then cp "$file" "$out/$name/"; fi
+    done
+    if [[ -z $(ls -A "$out/$name") ]]; then echo "No license file in $name" >&2; return 1; fi
+  done
+  # ICU's wrap directory has no version.
+  mv "$out/icu" "$out/icu-78.2"
+  mkdir -p "$out/curl-8.23.0"
+  cp "$work/curl-8.23.0/COPYING" "$out/curl-8.23.0/"
+}
+
+# One archive per variant, so library order does not matter: the linker rescans a single
+# archive until nothing new resolves. --exclude-libs keeps all of it local to the module.
+stack_bundles() {
+  local lib="$stack/plutobook/lib" name archives=() pc
+  for name in plutobook cairo pixman-1 harfbuzz fontconfig freetype png16 z expat \
+    sicuuc sicudata turbojpeg webp sharpyuv; do
+    [[ -f "$lib/lib$name.a" ]] || { echo "Missing static library lib$name.a" >&2; exit 1; }
+    archives+=("$lib/lib$name.a")
+  done
+  bundle "$stack/lib/libplutobook-glibc.a" "${archives[@]}"
+  bundle "$stack/lib/libplutobook-el8.a" "${archives[@]}" "$stack/curl-8.23.0/lib/libcurl.a"
+  # configure takes the include paths from these and checks the versions; module() links.
+  for variant in glibc el8; do
+    pc="$stack/pkgconfig/$variant"
+    mkdir -p "$pc"
+    cat > "$pc/plutobook.pc" <<PC
+Name: PlutoBook
+Description: PlutoBook and its rendering libraries, linked statically
+Version: 0.20.0
+Cflags: -I$stack/plutobook/include/plutobook
+Libs: -L$stack/lib -lplutobook-$variant -lstdc++ -lm -ldl -lrt
+PC
+  done
+  cp "$stack/curl-7.68.0/lib/pkgconfig/libcurl.pc" "$stack/pkgconfig/glibc/libcurl.pc"
+  # libcurl itself is in the el8 archive. GnuTLS and Nettle stay system libraries.
+  cat > "$stack/pkgconfig/el8/libcurl.pc" <<PC
+supported_protocols="HTTP HTTPS"
+Name: libcurl
+Description: libcurl 8.23.0, HTTP and HTTPS only, in libplutobook-el8.a
+Version: 8.23.0
+Cflags: -I$stack/curl-8.23.0/include
+Libs: -lgnutls -lnettle
+PC
+}
+
+bundle() {
+  local out=$1
+  shift
+  mkdir -p "${out%/*}"
+  rm -f "$out.tmp"
+  { echo "CREATE $out.tmp"; printf 'ADDLIB %s\n' "$@"; echo SAVE; echo END; } | ar -M
+  mv -f "$out.tmp" "$out"
+}
+
+# Build one module against the PHP release's own headers.
+module() {
+  local version=$1 variant=$2 build
+  local prefix="$root/.local/php/$version/nts"
+  build="$work/module/$version/$variant"
+  rm -rf "$build"
+  mkdir -p "$build"
+  cp -a "$root/ext/." "$build/"
+  if [[ -n $release ]]; then
+    printf '#define PHP_PLUTOBOOK_VERSION "%s"\n' "$release" > "$build/release-version.h"
+  fi
+  cd "$build"
+  "$prefix/bin/phpize"
+  PKG_CONFIG_LIBDIR="$stack/pkgconfig/$variant" PKG_CONFIG_PATH='' CFLAGS="$cflags" \
+    ./configure --with-php-config="$prefix/bin/php-config" --with-plutobook
+  # PHP's build compiles the objects and this function links them. libtool would add a run
+  # path to the libcurl stub. -z now fails the load at once on a missing symbol, such as
+  # curl_url() with a libcurl older than 7.62, instead of at the first remote asset.
+  local objects lo pic=() system
+  objects=$(sed -nE 's/^shared_objects_plutobook = //p' Makefile)
+  # shellcheck disable=SC2086 # One make target per object.
+  make -j"$jobs" $objects
+  for lo in $objects; do pic+=("$(dirname "$lo")/.libs/$(basename "$lo" .lo).o"); done
+  case $variant in
+    glibc) system=("$stack/curl-7.68.0/lib/libcurl.so") ;;
+    el8) system=(-lgnutls -lnettle) ;;
+  esac
+  mkdir -p modules
+  cc -shared -pthread -Wl,--version-script="$root/tools/portable/exports.map" \
+    -Wl,--exclude-libs,ALL -Wl,--gc-sections -Wl,-z,relro,-z,now -Wl,-z,noexecstack \
+    -Wl,--as-needed -Wl,-soname,plutobook.so -o modules/plutobook.so "${pic[@]}" \
+    "$stack/lib/libplutobook-$variant.a" "${system[@]}" -lstdc++ -lm -ldl -lrt
+}
+
+# Strip into dist/VARIANT/phpX.Y/, keeping the debug information in a separate file.
+install_module() {
+  local version=$1 variant=$2 so out
+  so="$work/module/$version/$variant/modules/plutobook.so"
+  out="$dist/$variant/php${version%.*}"
+  mkdir -p "$out"
+  objcopy --only-keep-debug "$so" "$out/plutobook.so.debug"
+  strip --strip-unneeded -o "$out/plutobook.so.tmp" "$so"
+  (cd "$out" && objcopy --add-gnu-debuglink=plutobook.so.debug plutobook.so.tmp)
+  mv -f "$out/plutobook.so.tmp" "$out/plutobook.so"
+}
+
+# What the module may link, export and require, so it loads on glibc 2.28 with GCC 8's
+# runtime and keeps Cairo, FreeType, ICU and libcurl symbols to itself.
+check_module() {
+  local so=$1 variant=$2 allowed dynamic lib exports kind limit newest
+  allowed=" libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 libstdc++.so.6 libgcc_s.so.1 ld-linux-x86-64.so.2 "
+  case $variant in
+    glibc) allowed+="libcurl.so.4 " ;;
+    el8) allowed+="libgnutls.so.30 libnettle.so.6 " ;;
+  esac
+  dynamic=$(readelf -dW "$so")
+  while read -r lib; do
+    [[ $allowed == *" $lib "* ]] || { echo "$so links $lib" >&2; return 1; }
+  done < <(sed -nE 's/.*\(NEEDED\).*\[(.*)\]/\1/p' <<<"$dynamic")
+  if grep -Eq '\((RPATH|RUNPATH|TEXTREL)\)' <<<"$dynamic"; then
+    echo "$so has a run path or text relocations" >&2
+    return 1
+  fi
+  grep -Eq '\(FLAGS_1\).*NOW' <<<"$dynamic" || { echo "$so lacks -z now" >&2; return 1; }
+  if readelf -lW "$so" | grep -E 'GNU_STACK' | grep -q 'RWE'; then
+    echo "$so has an executable stack" >&2
+    return 1
+  fi
+  exports=$(nm -D --defined-only "$so" | awk '{print $NF}' | sort -u | paste -sd ' ')
+  [[ $exports == get_module ]] || { echo "$so exports: $exports" >&2; return 1; }
+  if objdump -T "$so" | grep -q GLIBC_PRIVATE; then
+    echo "$so uses GLIBC_PRIVATE" >&2
+    return 1
+  fi
+  for kind in GLIBC:2.28 GLIBCXX:3.4.25 CXXABI:1.3.11 GCC:7.0.0; do
+    limit=${kind#*:}
+    newest=$(objdump -T "$so" | grep -oE "\b${kind%%:*}_[0-9.]+" | sed 's/.*_//' | sort -V | tail -1)
+    if [[ -n $newest && $(printf '%s\n' "$limit" "$newest" | sort -V | tail -1) != "$limit" ]]; then
+      echo "$so requires ${kind%%:*}_$newest, newer than $limit" >&2
+      return 1
+    fi
+  done
+  echo "$so links $(sed -nE 's/.*\(NEEDED\).*\[(.*)\]/\1/p' <<<"$dynamic" | paste -sd ' ')"
+}
+
+test_module() {
+  local version=$1 variant=$2 so="$dist/$2/php${1%.*}/plutobook.so" php
+  php="$root/.local/php/$version/nts/bin/php"
+  # The glibc variant runs against the oldest libcurl it supports.
+  if [[ $variant == glibc ]]; then export LD_LIBRARY_PATH="$stack/curl-7.68.0/lib"; fi
+  "$php" -n -d "extension=$so" --ri plutobook
+  if [[ -n $release ]]; then
+    "$php" -n -d "extension=$so" --ri plutobook | grep -Fq "$release"
+  fi
+  if ((tests)); then
+    PLUTOBOOK_MODULE="$so" PLUTOBOOK_TEST_FONTS="$stack/fonts" "$root/scripts/test-extension" "$version"
+    PLUTOBOOK_MODULE="$so" PLUTOBOOK_TEST_FONTS="$stack/fonts" "$root/scripts/test-invoice" "$version"
+  fi
+  unset LD_LIBRARY_PATH
+}
+
+pinned=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
+if ((${#versions[@]} == 0)); then mapfile -t versions <<<"$pinned"; fi
+part stack_plutobook "$root"/tools/patches/*.patch "$root"/tools/portable/wraps/*.wrap
+part stack_curl_minimum /dev/null
+part stack_curl_el8 "$stack/stack_plutobook.key"
+part stack_bundles "$stack"/stack_{plutobook,curl_minimum,curl_el8}.key
+part stack_licenses "$stack"/stack_{plutobook,curl_el8}.key
+step test-fonts "$root/scripts/stage-test-fonts" "$stack/fonts"
+rm -rf "$dist/licenses"
+cp -R "$stack/licenses" "$dist/licenses"
+for version in "${versions[@]}"; do
+  step "php-$version" "$root/scripts/build-php" "$version" nts
+  for variant in glibc el8; do
+    step "module-$version-$variant" module "$version" "$variant"
+    install_module "$version" "$variant"
+    check_module "$dist/$variant/php${version%.*}/plutobook.so" "$variant"
+    step "test-$version-$variant" test_module "$version" "$variant"
+  done
+done
+ls -l "$dist"/*/php*/plutobook.so

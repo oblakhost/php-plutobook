@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Build self-contained Linux x86_64 modules in an AlmaLinux 8 container.
+# Usage: scripts/build-portable [--skip-tests] [PHP_VERSION...]
+#
+# Writes build/portable/dist/{glibc,el8}/phpX.Y/plutobook.so, each with a separate
+# plutobook.so.debug, for every pinned PHP release or the given ones. Logs go to
+# build/portable/root/artifacts/portable/. PLUTOBOOK_RELEASE_VERSION embeds a release
+# version, as in the PIE source archive. CONTAINER_ENGINE picks podman or docker.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+tests=()
+versions=()
+for arg in "$@"; do
+  case $arg in
+    --skip-tests) tests=(--skip-tests) ;;
+    -*) echo "Usage: scripts/build-portable [--skip-tests] [PHP_VERSION...]" >&2; exit 2 ;;
+    *) versions+=("$arg") ;;
+  esac
+done
+pinned=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
+if ((${#versions[@]} == 0)); then mapfile -t versions <<<"$pinned"; fi
+for version in "${versions[@]}"; do
+  grep -Fxq "$version" <<<"$pinned" || { echo "Unknown release: $version" >&2; exit 1; }
+done
+if [[ -n ${PLUTOBOOK_RELEASE_VERSION:-} && ! $PLUTOBOOK_RELEASE_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo "PLUTOBOOK_RELEASE_VERSION must be a SemVer version" >&2
+  exit 2
+fi
+engine=${CONTAINER_ENGINE:-}
+if [[ -z $engine ]]; then
+  engine=$(command -v podman || command -v docker) || { echo "Install podman or docker" >&2; exit 1; }
+fi
+
+# The container runs without network access, so fetch and verify every input here.
+inputs=(8df624e11bd55d8e4f276ebf559335aa29fb926c meson-1.12.1.tar.gz dejavu-fonts-ttf-2.37.tar.bz2
+  cairo-1.18.4.tar.xz pixman-0.46.4.tar.gz libpng-1.6.59.tar.gz libpng_1.6.59-1_patch.zip
+  zlib-1.3.2.tar.xz zlib_1.3.2-1_patch.zip freetype-2.14.3.tar.xz fontconfig-2.18.3.tar.xz
+  harfbuzz-13.0.1.tar.xz expat-2.8.2.tar.xz expat_2.8.2-1_patch.zip icu4c-78.2-sources.tgz
+  icu_78.2-1_patch.zip libjpeg-turbo-3.1.4.1.tar.gz libjpeg-turbo_3.1.4.1-2_patch.zip
+  libwebp-1.6.0.tar.gz libwebp_1.6.0-1_patch.zip curl-7.68.0.tar.xz curl-8.23.0.tar.gz
+  php-8.2.36.tar.xz)
+for version in "${versions[@]}"; do inputs+=("php-$version.tar.xz"); done
+for name in "${inputs[@]}"; do "$root/scripts/fetch-source" "$name" > /dev/null; done
+
+image="localhost/php-plutobook-portable:$(sha256sum "$root/tools/portable/Containerfile" | cut -c1-12)"
+if ! "$engine" image inspect "$image" > /dev/null 2>&1; then
+  "$engine" build -t "$image" -f "$root/tools/portable/Containerfile" "$root/tools/portable"
+fi
+
+work="$root/build/portable"
+mkdir -p "$work/root/.cache/sources" "$work/dist" "$work/home"
+args=(--rm --network=none --security-opt label=disable
+  -v "$root:/src:ro" -v "$work:/work" -v "$root/.cache/sources:/work/root/.cache/sources"
+  -e HOME=/work/home -e PLUTOBOOK_RELEASE_VERSION -e JOBS)
+case ${engine##*/} in
+  podman) args+=(--userns=keep-id) ;;
+  *) args+=(--user "$(id -u):$(id -g)") ;;
+esac
+"$engine" run "${args[@]}" "$image" /src/tools/portable/build "${tests[@]}" "${versions[@]}"

@@ -1,0 +1,25 @@
+# Build environment for the portable Linux modules (scripts/build-portable).
+# AlmaLinux 8.10 has glibc 2.28, so its binaries run on EL8 and later, Debian 10 and later
+# and Ubuntu 20.04 and later. gcc-toolset-14 links the C++ runtime parts newer than GCC 8
+# into the module, which then needs only the system libstdc++ of GCC 8 (GLIBCXX_3.4.25).
+FROM docker.io/library/almalinux:8@sha256:974135fa35c47f8406ae9f81e8479fe0c372bdd64244a48770848466ceb694ce
+
+# - Toolchains: gcc-toolset-14 for shipped code; the system GCC 8 builds the old libcurl
+#   7.68.0 link stub, which predates GCC 14's stricter defaults.
+# - Renderer stack: Meson runs on Python 3.12; Fontconfig needs gperf, libjpeg-turbo nasm.
+# - PHP and its tests: the scripts/build-php dependencies, jq, Poppler, and Fontconfig with
+#   DejaVu for a system font configuration like a server's.
+# - libcurl for EL8: system GnuTLS and Nettle. curl 8.18 and later need OpenSSL 3.
+RUN dnf -y install dnf-plugins-core \
+    && dnf config-manager --set-enabled powertools \
+    && dnf -y install \
+        gcc-toolset-14-gcc gcc-toolset-14-gcc-c++ gcc-toolset-14-binutils gcc make \
+        autoconf automake libtool m4 pkgconf-pkg-config cmake ninja-build python3.12 \
+        gperf nasm patch diffutils file findutils which rsync xz bzip2 unzip perl-interpreter \
+        util-linux procps-ng jq poppler-utils fontconfig dejavu-sans-fonts ca-certificates \
+        libxml2-devel openssl-devel zlib-devel gnutls-devel nettle-devel \
+    && alternatives --set python3 /usr/bin/python3.12 \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+ENV PATH=/opt/rh/gcc-toolset-14/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

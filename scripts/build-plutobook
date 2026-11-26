@@ -61,25 +61,10 @@ cmake_dependency() {
 pkg-config --print-errors --exists cairo-fc cairo-ft cairo-png cairo-pdf freetype2 fontconfig harfbuzz icu-uc
 unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$build/source"
 unpack meson-1.9.1.tar.gz "$build/meson-1.9.1"
-unpack dejavu-fonts-ttf-2.37.tar.bz2 "$build/dejavu"
-mkdir -p "$prefix/share/fonts/dejavu" "$prefix/etc/fonts" "$prefix/var/cache/fontconfig" \
-  "$licenses/dejavu" "$licenses/plutobook"
-cp -f "$build/dejavu/ttf"/DejaVuSans{,-Bold}.ttf "$prefix/share/fonts/dejavu/"
-cp -f "$build/dejavu"/{LICENSE,AUTHORS} "$licenses/dejavu/"
+"$root/scripts/stage-test-fonts" "$prefix"
+mkdir -p "$licenses/plutobook"
 cp -f "$build/source"/{LICENSE,CREDITS} "$licenses/plutobook/"
 cp -Rf "$build/source/licenses" "$licenses/plutobook/"
-# Fontconfig versions differ on relative cache directories. Anchor both paths.
-python3 - "$prefix" <<'PY'
-from pathlib import Path
-import sys
-import xml.etree.ElementTree as ET
-
-prefix = Path(sys.argv[1])
-config = ET.Element("fontconfig")
-ET.SubElement(config, "dir").text = str(prefix / "share/fonts/dejavu")
-ET.SubElement(config, "cachedir").text = str(prefix / "var/cache/fontconfig")
-ET.ElementTree(config).write(prefix / "etc/fonts/fonts.conf", encoding="utf-8", xml_declaration=True)
-PY
 
 cmake_dependency expat expat-2.8.2.tar.xz -DEXPAT_BUILD_TOOLS=OFF -DEXPAT_BUILD_EXAMPLES=OFF \
   -DEXPAT_BUILD_TESTS=OFF -DEXPAT_BUILD_DOCS=OFF

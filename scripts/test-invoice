@@ -4,11 +4,12 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 version=${1:?Usage: test-invoice VERSION [nts|debug|ubsan]}
 flavor=${2:-nts}
 source "$root/scripts/php-env.sh"
-module="$root/build/extension/$version/$flavor/modules/plutobook.so"
-engine="$root/.local/plutobook/0.20.0"
-export FONTCONFIG_FILE="$engine/etc/fonts/fonts.conf"
-for file in "$module" "$FONTCONFIG_FILE" "$engine/share/fonts/dejavu/DejaVuSans.ttf" \
-  "$engine/share/fonts/dejavu/DejaVuSans-Bold.ttf"; do
+# PLUTOBOOK_MODULE and PLUTOBOOK_TEST_FONTS select another build, such as a portable module.
+module=${PLUTOBOOK_MODULE:-$root/build/extension/$version/$flavor/modules/plutobook.so}
+fonts=${PLUTOBOOK_TEST_FONTS:-$root/.local/plutobook/0.20.0}
+export FONTCONFIG_FILE="$fonts/etc/fonts/fonts.conf"
+for file in "$module" "$FONTCONFIG_FILE" "$fonts/share/fonts/dejavu/DejaVuSans.ttf" \
+  "$fonts/share/fonts/dejavu/DejaVuSans-Bold.ttf"; do
   [[ -r "$file" ]] || { echo "Missing build prerequisite: $file" >&2; exit 1; }
 done
 log="$root/artifacts/invoice/$version/$flavor"
