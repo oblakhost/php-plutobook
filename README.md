@@ -111,6 +111,12 @@ source archive, which needs PlutoBook 0.20.0 and libcurl development files (see
 [Building against system libraries](#building-against-system-libraries)). On EL8,
 whose libcurl is too old for remote assets, install the EL8 rpm instead.
 
+PIE finds and downloads the release files through GitHub's API, about two requests
+per install; GitHub allows 60 anonymous requests an hour per IP address. On a shared
+address or in CI, give PIE a GitHub token through Composer's authentication, for
+example `COMPOSER_AUTH='{"github-oauth":{"github.com":"TOKEN"}}'`; PIE does not read
+`GITHUB_TOKEN`.
+
 ### Windows release packages
 
 With [PIE](https://github.com/php/pie) configured for the target PHP installation, run
@@ -490,8 +496,9 @@ original WHMCS/Gotenberg output awaits the real fixture.
 
 The PIE package name is `oblakhost/ext-plutobook`. After the CI matrix passes,
 each release gets the source archive, the Linux and Windows PIE binaries, the deb
-and rpm packages, the MPL sources and signed checksums. Packagist lists the
-package once the repository is registered there. PECL directs new extensions to PIE.
+and rpm packages, the MPL sources and signed checksums.
+[Packagist](https://packagist.org/packages/oblakhost/ext-plutobook) lists the
+package. PECL directs new extensions to PIE.
 [PECL publishing policy](https://pecl.php.net/account-request.php)
 
 The binding uses Apache-2.0. The separately linked PlutoBook library uses MPL-2.0.
