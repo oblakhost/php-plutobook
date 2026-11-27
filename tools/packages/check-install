@@ -51,6 +51,22 @@ case $name:$pkg in
 esac
 silent install "$pkg"
 "$php" -m | grep -qx plutobook || { echo "plutobook is not enabled"; exit 1; }
+case $name in
+  oblak-ea-php*-plutobook)
+    # CloudLinux copies only what the CageFS file lists into cages; a wrong font path
+    # there means PDFs without text for caged websites.
+    cfg=/etc/cagefs/conf.d/$name.cfg
+    paths=$(sed -n 's/^paths=//p' "$cfg")
+    [ -n "$paths" ] || { echo "$cfg lists no paths"; exit 1; }
+    ifs=$IFS
+    IFS=,
+    for path in $paths; do
+      path=${path# }
+      [ -e "$path" ] || { echo "$cfg lists $path, which does not exist"; exit 1; }
+    done
+    IFS=$ifs
+    ;;
+esac
 cat > /tmp/render.php <<'PHP'
 <?php
 $doc = new PlutoBook\Document();

@@ -90,10 +90,12 @@ expect_calls "$refresh modules=1"
 ! "$php_a" -m 2>&1 | grep -i warning || fail "PHP warns after removal"
 
 block='duplicate ini'
+# What PIE writes.
 dup=/opt/cpanel/ea-php$a/root/etc/php.d/80-plutobook.ini
-echo extension=plutobook.so > "$dup"
+printf '\n; PIE automatically added this to enable the oblakhost/ext-plutobook extension\n; priority=80\nextension=plutobook\n' > "$dup"
 op install "$pkg_a"
-grep -qF "PlutoBook: warning: $dup also loads plutobook; remove it" /tmp/out || { cat /tmp/out; fail "no warning"; }
+grep -qF "PlutoBook: warning: $dup also loads plutobook. Remove it, then run: /usr/sbin/cagefsctl --update --force-update (CloudLinux only); /usr/local/cpanel/scripts/restartsrv_apache_php_fpm; /usr/local/cpanel/scripts/restartsrv_httpd" /tmp/out ||
+  { cat /tmp/out; fail "no warning"; }
 rm -f "$dup"
 : > /tmp/calls
 
@@ -112,6 +114,13 @@ block='no mounts'
 echo '# none' > /etc/cagefs/cagefs.mp
 op reinstall "$pkg_a"
 expect_calls "restartsrv_apache_php_fpm modules=2" "restartsrv_httpd modules=2"
+
+block='flag unwritable'
+echo /opt > /etc/cagefs/cagefs.mp
+mkdir /run/oblak-ea-plutobook.refresh
+op reinstall "$pkg_a"
+expect_calls "$refresh modules=2" "restartsrv_apache_php_fpm modules=2" "restartsrv_httpd modules=2"
+rmdir /run/oblak-ea-plutobook.refresh
 
 block='removed with ea-php'
 echo /opt > /etc/cagefs/cagefs.mp
