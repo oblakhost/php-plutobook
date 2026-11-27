@@ -11,19 +11,24 @@ on:
         required: true
         type: string
   workflow_dispatch:
+  # Everything the build compiles, runs, tests or packages, so a change that breaks only
+  # aarch64 shows up on the pull request rather than in the release. Only the Windows and
+  # release tooling is left out.
   pull_request:
     paths:
       - ext/**
-      - scripts/build-php
-      - scripts/build-portable
-      - scripts/build-packages
-      - scripts/stage-test-fonts
-      - scripts/test-packages
-      - tools/packages/**
-      - tools/patches/**
-      - tools/portable/**
-      - tools/sources.sha256
+      - scripts/**
+      - '!scripts/windows/**'
+      - '!scripts/build-windows-renderer'
+      - '!scripts/test-winbuild'
+      - '!scripts/release-*.mjs'
+      - tests/**
+      - tools/**
+      - LICENSE
+      - THIRD_PARTY.md
       - .github/workflows/portable.yml
+      - .github/workflows/release.yml
+      - .github/scripts/release-assets.py
 
 permissions:
   contents: read
