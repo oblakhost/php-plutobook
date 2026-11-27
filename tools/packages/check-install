@@ -22,8 +22,9 @@ case $pkg in
     php_pkgs=${name%-plutobook}-cli
     ;;
   *.rpm)
-    install() { dnf -y -q install "$@"; }
-    remove() { dnf -y -q remove "$@"; }
+    # Not -q: dnf then hides what package scripts print.
+    install() { dnf -y install "$@"; }
+    remove() { dnf -y remove "$@"; }
     name=$(rpm -qp --qf '%{NAME}' "$pkg")
     php_pkgs=php-cli
     ;;

@@ -4,6 +4,7 @@
 # the same commands in the same order themselves. Nothing here may fail the package
 # operation, and without cPanel or CloudLinux nothing here prints anything.
 PLUTOBOOK_FLAG=/run/oblak-ea-plutobook.refresh
+# shellcheck disable=SC2034 # used by the deb's postinst, which follows this file
 PLUTOBOOK_TRIGGER=oblak-ea-plutobook-refresh
 
 plutobook_run() {
