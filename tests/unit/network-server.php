@@ -41,6 +41,7 @@ $route = static fn (string $path): array => match ($path) {
     '/empty.png' => ['200 OK', ['Content-Type' => 'image/png'], ''],
     '/big.png' => ['200 OK', ['Content-Type' => 'image/png'], str_repeat('x', 65536)],
     '/redirect/dot.png' => ['302 Found', ['Location' => '/img/dot.png'], ''],
+    '/redirect/style.css' => ['302 Found', ['Location' => '/style.css'], ''],
     '/redirect/away' => ['302 Found', ['Location' => $away], ''],
     '/redirect/loop' => ['302 Found', ['Location' => '/redirect/loop'], ''],
     '/redirect/ftp' => ['302 Found', ['Location' => 'ftp://127.0.0.1/dot.png'], ''],

@@ -226,6 +226,11 @@ to local files, so it can't be combined with `documentRoot`. You can still use
 links. The extension downloads with libcurl directly and doesn't need PHP's `curl`
 extension. [Security](#security) lists what it refuses to fetch.
 
+A stylesheet or SVG that redirects keeps the address you linked. PlutoBook looks
+up its relative links, such as `url(fonts/face.ttf)` or `@import`, next to that
+address, not next to the one it redirected to. Link to the final address, or use
+absolute URLs inside files that get redirected.
+
 ### Missing images and fonts
 
 If an image, stylesheet or font can't be loaded, it is left out and the rest of
