@@ -33,28 +33,33 @@ plutobook_restart_services() {
 
 # Installing several packages in one transaction refreshes once, after all of them:
 # each package records that a refresh is due, and the first end-of-transaction hook
-# does it. Without /run, refresh straight away.
+# does it. Without a writable /run, refresh straight away. The subshell matters: a failed
+# redirection on the special built-in ":" would end the whole script.
 plutobook_refresh_due() {
-    if ! : > "$PLUTOBOOK_FLAG" 2> /dev/null; then
+    if ! (: > "$PLUTOBOOK_FLAG") 2> /dev/null; then
         plutobook_cagefs_update
         plutobook_restart_services
     fi
 }
 
 plutobook_refresh_if_due() {
-    [ -e "$PLUTOBOOK_FLAG" ] || return 0
+    [ -f "$PLUTOBOOK_FLAG" ] || return 0
     rm -f "$PLUTOBOOK_FLAG"
     plutobook_cagefs_update
     plutobook_restart_services
 }
 
 # PIE writes its own ini (80-plutobook.ini), and PHP warns on every start when two
-# files load the module.
+# files load the module. This runs before the refresh, so after removing the file the
+# admin has to refresh again for running PHP and the cages to drop it.
 plutobook_check_duplicate() {
     for plutobook_ini in "/opt/cpanel/ea-php$1/root/etc/php.d/"*.ini; do
         [ -f "$plutobook_ini" ] && [ "${plutobook_ini##*/}" != 20-plutobook.ini ] || continue
         if grep -Eq '^[[:space:]]*extension[[:space:]]*=[[:space:]]*"?plutobook(\.so)?"?[[:space:]]*$' "$plutobook_ini"; then
-            echo "PlutoBook: warning: $plutobook_ini also loads plutobook; remove it" >&2
+            echo "PlutoBook: warning: $plutobook_ini also loads plutobook. Remove it, then run:" \
+                "/usr/sbin/cagefsctl --update --force-update (CloudLinux only);" \
+                "/usr/local/cpanel/scripts/restartsrv_apache_php_fpm;" \
+                "/usr/local/cpanel/scripts/restartsrv_httpd" >&2
         fi
     done
 }
