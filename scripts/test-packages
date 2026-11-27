@@ -22,8 +22,13 @@ sury_debian="$apt_install ca-certificates curl lsb-release && curl -fsSLo /tmp/k
 sury_ubuntu="$apt_install software-properties-common gpg-agent && add-apt-repository -y ppa:ondrej/php"
 # Remi's modular streams, for PHP versions AppStream lacks.
 remi() { echo "dnf -y -q install epel-release https://rpms.remirepo.net/enterprise/remi-release-$1.rpm && dnf -y -q module reset php && dnf -y -q module enable php:remi-$2"; }
+# cPanel's public EasyApache 4 repositories serve ea-php without a cPanel install.
+ea4_key=https://securedownloads.cpanel.net/cPanelPublicPkgKey.asc
+ea4_el() { echo "printf '%s\n' '[EA4]' 'name=EA4' 'baseurl=http://httpupdate.cpanel.net/cpanelsync/repos/$1/EA4/' 'gpgcheck=$2' 'gpgkey=$ea4_key' > /etc/yum.repos.d/EA4.repo"; }
+ea4_ubuntu() { echo "$apt_install ca-certificates curl && mkdir -p /etc/apt/keyrings && curl -fsSLo /etc/apt/keyrings/cpanel-ea4.asc $ea4_key && echo 'deb [signed-by=/etc/apt/keyrings/cpanel-ea4.asc] mirror://httpupdate.cpanel.net/ea4-$1-mirrorlist ./' > /etc/apt/sources.list.d/EA4.list"; }
 
-# name | image | package glob | PHP setup before installing the package
+# name | image | package globs (space-separated) | PHP setup before installing the package
+#   | check script in tools/packages/ (default check-install)
 scenarios=(
   "debian12-php8.2|docker.io/library/debian:12|php8.2-plutobook_*_$deb.deb|true"
   "ubuntu2404-php8.3|docker.io/library/ubuntu:24.04|php8.3-plutobook_*_$deb.deb|true"
@@ -39,20 +44,38 @@ scenarios=(
   "el10-php8.3|docker.io/library/almalinux:10|php-plutobook-*.php83.el10.$rpm.rpm|true"
   "el10-php8.4-remi|docker.io/library/almalinux:10|php-plutobook-*.php84.el10.$rpm.rpm|$(remi 10 8.4)"
 )
+# cPanel EasyApache 4 packages exist only for x86_64, as cPanel does. EL10's rpm rejects
+# cPanel's signing key (SHA-1 self-signatures), so that test repository skips signature
+# checks.
+if [[ $rpm == x86_64 ]]; then
+  scenarios+=(
+    "cpanel-el8-php8.2|docker.io/library/almalinux:8|oblak-ea-php82-plutobook-*.el8.x86_64.rpm|$(ea4_el CentOS/8 1)"
+    "cpanel-el9-php8.4|docker.io/library/almalinux:9|oblak-ea-php84-plutobook-*.el9.x86_64.rpm|$(ea4_el CentOS/9 1)"
+    "cpanel-el10-php8.6|docker.io/library/almalinux:10|oblak-ea-php86-plutobook-*.el10.x86_64.rpm|$(ea4_el Almalinux/10 0)"
+    "cpanel-ubuntu2204-php8.3|docker.io/library/ubuntu:22.04|oblak-ea-php83-plutobook_*_amd64.deb|$(ea4_ubuntu u22)"
+    "cpanel-ubuntu2404-php8.5|docker.io/library/ubuntu:24.04|oblak-ea-php85-plutobook_*_amd64.deb|$(ea4_ubuntu u24)"
+  )
+fi
 
+# The check runs from tools/packages/, mounted at /tools, with each package under /pkg/.
 # tools/packages/check-install installs, renders, removes and looks for leftovers.
 selected=("$@")
 mkdir -p "$logs"
 failed=0
 for scenario in "${scenarios[@]}"; do
-  IFS='|' read -r name image glob setup <<<"$scenario"
+  IFS='|' read -r name image globs setup check <<<"$scenario"
   if ((${#selected[@]})) && [[ " ${selected[*]} " != *" $name "* ]]; then continue; fi
-  mapfile -t matches < <(compgen -G "$packages/$glob" || true)
-  ((${#matches[@]} == 1)) || { echo "$name: expected one package matching $glob" >&2; failed=1; continue; }
+  read -ra globs <<<"$globs"
+  mounts=()
+  for glob in "${globs[@]}"; do
+    mapfile -t matches < <(compgen -G "$packages/$glob" || true)
+    ((${#matches[@]} == 1)) || { echo "$name: expected one package matching $glob" >&2; failed=1; continue 2; }
+    mounts+=(-v "${matches[0]}:/pkg/${matches[0]##*/}:ro")
+  done
   printf '%-26s ' "$name"
-  if "$engine" run --rm --quiet --security-opt label=disable -v "${matches[0]}:/pkg/${matches[0]##*/}:ro" \
-      -v "$root/tools/packages/check-install:/check-install:ro" "$image" bash -c \
-      "{ $setup; } >/tmp/setup.log 2>&1 || { tail -20 /tmp/setup.log; exit 3; }; sh /check-install" \
+  if "$engine" run --rm --quiet --security-opt label=disable "${mounts[@]}" \
+      -v "$root/tools/packages:/tools:ro" "$image" bash -c \
+      "{ $setup; } >/tmp/setup.log 2>&1 || { tail -20 /tmp/setup.log; exit 3; }; sh /tools/${check:-check-install}" \
       > "$logs/$name.log" 2>&1; then
     tr '\n' ' ' < "$logs/$name.log"
     echo

@@ -2,9 +2,15 @@
 # Runs in a clean container (scripts/test-packages) with the package under /pkg/ and the
 # distribution's or a third-party repository's PHP available. Installs the package, renders
 # a page through the enabled extension, removes the package and looks for leftovers.
+# cPanel packages (oblak-ea-phpNN-plutobook) use that ea-php from cPanel's repository.
 set -eu
 # Package manager output only when a step fails.
 quiet() { "$@" > /tmp/step.log 2>&1 || { cat /tmp/step.log; return 1; }; }
+# Without cPanel or CloudLinux, the packages' install and removal scripts print nothing.
+silent() {
+  quiet "$@"
+  if grep '^PlutoBook: ' /tmp/step.log; then echo "package scripts printed the lines above"; return 1; fi
+}
 pkg=$(ls /pkg/*)
 case $pkg in
   *.deb)
@@ -13,18 +19,37 @@ case $pkg in
     install() { apt-get -qq install -y --no-install-recommends "$@"; }
     remove() { apt-get -qq purge -y "$@"; }
     name=$(dpkg-deb -f "$pkg" Package)
-    php_pkg=${name%-plutobook}-cli
+    php_pkgs=${name%-plutobook}-cli
     ;;
   *.rpm)
     install() { dnf -y -q install "$@"; }
     remove() { dnf -y -q remove "$@"; }
-    name=php-plutobook
-    php_pkg=php-cli
+    name=$(rpm -qp --qf '%{NAME}' "$pkg")
+    php_pkgs=php-cli
     ;;
 esac
-quiet install "$php_pkg" poppler-utils
-quiet install "$pkg"
-php -m | grep -qx plutobook || { echo "plutobook is not enabled"; exit 1; }
+php=php
+case $name in
+  oblak-ea-php*-plutobook)
+    nn=${name#oblak-ea-php}
+    nn=${nn%-plutobook}
+    php=/opt/cpanel/ea-php$nn/root/usr/bin/php
+    php_pkgs=ea-php$nn-php-cli
+    # cPanel's Ubuntu ea-php needs libxml2 and tzdata without depending on them; on 24.04
+    # it aborts with "buffer overflow detected" when /usr/share/zoneinfo is missing.
+    case $pkg in *.deb) php_pkgs="$php_pkgs libxml2 tzdata" ;; esac
+    ;;
+esac
+# shellcheck disable=SC2086 # php_pkgs is a list of package names
+quiet install $php_pkgs
+# pdftotext. cPanel's EL repository would satisfy its brotli dependency with ea-brotli,
+# which installs outside the library path.
+case $name:$pkg in
+  oblak-ea-php*:*.rpm) quiet dnf -y -q --disablerepo=EA4 install poppler-utils ;;
+  *) quiet install poppler-utils ;;
+esac
+silent install "$pkg"
+"$php" -m | grep -qx plutobook || { echo "plutobook is not enabled"; exit 1; }
 cat > /tmp/render.php <<'PHP'
 <?php
 $doc = new PlutoBook\Document();
@@ -32,14 +57,19 @@ $doc->loadHtml('<h1>Zdravo, свете</h1><p>Package test</p>');
 $doc->writeToFile('/tmp/test.pdf');
 printf('PHP %s, %s, ', PHP_VERSION, (new ReflectionExtension('plutobook'))->getVersion());
 PHP
-php /tmp/render.php
-pdftotext /tmp/test.pdf - | head -1
-php --ri plutobook | grep -F 'HTTP client'
-quiet remove "$name"
-if php -m | grep -qx plutobook; then echo "plutobook still enabled after removal"; exit 1; fi
+"$php" /tmp/render.php
+pdftotext /tmp/test.pdf /tmp/test.txt
+head -1 /tmp/test.txt
+grep -q 'Zdravo, свете' /tmp/test.txt || { echo "the PDF has no text"; exit 1; }
+"$php" --ri plutobook | grep -F 'HTTP client'
+silent remove "$name"
+if "$php" -m | grep -qx plutobook; then echo "plutobook still enabled after removal"; exit 1; fi
 left=$(ls -d /usr/lib/php/*/plutobook.so /usr/lib64/php/modules/plutobook.so \
   /etc/php.d/40-plutobook.ini /etc/php/*/mods-available/plutobook.ini \
   /etc/php/*/*/conf.d/*plutobook.ini /usr/share/doc/*plutobook \
-  /usr/share/licenses/php-plutobook 2> /dev/null || true)
+  /usr/share/licenses/php-plutobook /usr/share/licenses/oblak-ea-php*-plutobook \
+  /opt/cpanel/ea-php*/root/usr/lib64/php/modules/plutobook.so \
+  /opt/cpanel/ea-php*/root/etc/php.d/20-plutobook.ini \
+  /etc/cagefs/conf.d/oblak-ea-php*-plutobook.cfg /run/oblak-ea-plutobook.refresh 2> /dev/null || true)
 if [ -n "$left" ]; then echo "left after removal: $left"; exit 1; fi
 echo removed cleanly
