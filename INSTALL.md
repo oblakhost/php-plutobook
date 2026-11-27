@@ -208,9 +208,10 @@ The bundled Fontconfig reads the system configuration in `/etc/fonts`. Its cache
 format (version 12) differs from the system Fontconfig's, so each PHP process
 scans the font folders once unless it can write its own cache, for example in
 `/var/cache/fontconfig` when running as root or in the PHP user's home folder. The
-scan took 15 ms with 38 fonts and 120 ms with 263 fonts on AlmaLinux 10. A patch
-stops it from printing "No writable cache directories" for every font folder; set
-`FC_DEBUG=16` to see that message again.
+scan took 15 ms with 38 fonts and 120 ms with 263 fonts on AlmaLinux 10. Its cache
+files sit next to the system's and leave them alone, so `fc-list`, Imagick and other
+programs keep using their own cache. A patch stops it from printing "No writable
+cache directories" for every font folder; set `FC_DEBUG=16` to see that message again.
 
 ## Windows
 

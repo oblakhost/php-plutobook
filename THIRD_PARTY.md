@@ -47,7 +47,7 @@ of a deb and `/usr/share/licenses/php-plutobook/bundled/` of an rpm.
 | pixman | 0.46.4 | MIT | |
 | HarfBuzz | 13.0.1 | MIT | |
 | FreeType | 2.14.3 | FreeType License, chosen from it or GPL-2.0 | |
-| Fontconfig | 2.18.3 | MIT | `tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch` |
+| Fontconfig | 2.18.3 | MIT | `tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch`, `tools/patches/fontconfig-2.18.3-keep-other-cache-versions.patch` |
 | libpng | 1.6.59 | libpng License 2 | |
 | zlib | 1.3.2 | zlib | |
 | Expat | 2.8.2 | MIT | |

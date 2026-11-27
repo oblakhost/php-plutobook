@@ -12,7 +12,7 @@ if [[ ! -f /work/.prepared ]]; then
   tar -xf "$cache/$1" --strip-components=1 -C "$src"
   patch -d "$src" -p0 < /src/tools/patches/plutobook-0.20.0-static-font-variations.patch
   cp -f /src/tools/portable/wraps/*.wrap "$src/subprojects/"
-  cp -f /src/tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch "$src/subprojects/packagefiles/"
+  cp -f /src/tools/patches/fontconfig-2.18.3-*.patch "$src/subprojects/packagefiles/"
   mkdir -p "$src/subprojects/packagecache"
   for archive in "${@:3}"; do ln -sf "$cache/$archive" "$src/subprojects/packagecache/$archive"; done
   touch /work/.prepared

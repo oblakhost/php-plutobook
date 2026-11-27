@@ -101,11 +101,12 @@ stack_plutobook() {
   unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$src/source"
   # Font variations only for variable fonts (plutobook#84), which avoids the Cairo leak.
   patch -p0 -d "$src/source" < "$root/tools/patches/plutobook-0.20.0-static-font-variations.patch"
-  # The wraps replace Cairo's outdated nested wraps. The Fontconfig wrap adds a patch: a
-  # bundled copy cannot use the system's caches, so a process without a writable cache
-  # directory would print an error for every font directory.
+  # The wraps replace Cairo's outdated nested wraps. The Fontconfig wrap adds two patches
+  # for a bundled copy, which cannot use the system's caches: a process without a writable
+  # cache directory would print an error for every font directory, and writing its own
+  # cache would replace the system Fontconfig's cache files with links to it.
   cp "$root"/tools/portable/wraps/*.wrap "$src/source/subprojects/"
-  cp "$root/tools/patches/fontconfig-2.18.3-quiet-cache-dirs.patch" "$src/source/subprojects/packagefiles/"
+  cp "$root"/tools/patches/fontconfig-2.18.3-*.patch "$src/source/subprojects/packagefiles/"
   # Meson takes wrap sources from packagecache after checking their hashes.
   mkdir -p "$src/source/subprojects/packagecache"
   for wrap in "$src/source/subprojects"/*.wrap; do

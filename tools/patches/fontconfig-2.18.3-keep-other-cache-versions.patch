@@ -1,0 +1,60 @@
+--- a/src/fccache.c
++++ b/src/fccache.c
+@@ -114,24 +114,6 @@
+ 
+ #define CACHEBASE_LEN (1 + 36 + 1 + sizeof (FC_ARCHITECTURE) + sizeof (FC_CACHE_SUFFIX))
+ 
+-#ifdef HAVE_SYMLINK
+-static FcChar8 *
+-FcDirCacheReplaceVersion (const FcChar8 *cache_base,
+-			  FcChar8 compat_base[CACHEBASE_LEN],
+-			  int version)
+-{
+-    const char *suffix = strstr ((const char *)cache_base, ".cache-");
+-    size_t	prefix_len;
+-
+-    if (!suffix)
+-	return NULL;
+-    prefix_len = suffix - (const char *)cache_base;
+-    memcpy (compat_base, cache_base, prefix_len);
+-    sprintf ((char *)compat_base + prefix_len, ".cache-%d", version);
+-    return compat_base;
+-}
+-#endif
+-
+ static FcBool
+ FcCacheIsMmapSafe (int fd)
+ {
+@@ -1549,29 +1531,9 @@
+ 	unlock_cache();
+     }
+ 
+-#ifdef HAVE_SYMLINK
+-    if (FC_CACHE_MIN_COMPAT_VERSION < FC_CACHE_VERSION_NUMBER) {
+-	int v;
+-
+-	for (v = FC_CACHE_MIN_COMPAT_VERSION; v < FC_CACHE_VERSION_NUMBER; v++) {
+-	    FcChar8  compat_base[CACHEBASE_LEN];
+-	    FcChar8 *compat_path;
+-
+-	    if (!FcDirCacheReplaceVersion (cache_base, compat_base, v))
+-		continue;
+-	    compat_path = FcStrBuildFilename (cache_dir, compat_base, NULL);
+-	    if (!compat_path)
+-		continue;
+-	    (void)unlink ((char *)compat_path);
+-	    if (symlink ((char *)cache_base, (char *)compat_path) < 0) {
+-		if (FcDebug() & FC_DBG_CACHE)
+-		    printf ("FcDirCacheWrite: symlink %s -> %s failed\n",
+-			    compat_path, cache_base);
+-	    }
+-	    FcStrFree (compat_path);
+-	}
+-    }
+-#endif
++    /* A bundled Fontconfig shares its cache directories with the system's own, which
++     * can be older. Leave other versions' cache files alone: replacing them with links
++     * to this version's files makes the system Fontconfig reject them and scan again. */
+ 
+     FcStrFree (cache_dir);
+     FcStrFree (cache_hashed);

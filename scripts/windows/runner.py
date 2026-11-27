@@ -124,7 +124,11 @@ def stage_renderer(run, cache, deps):
         header = bundle.read("include/plutobook.h").decode("utf-8").splitlines()
         if header != (deps / "include/plutobook.h").read_text(encoding="utf-8").splitlines():
             sys.exit("Patched renderer's C header differs from the pinned import library header")
-        for patch in ("plutobook-0.20.0-static-font-variations.patch", "fontconfig-2.18.3-quiet-cache-dirs.patch"):
+        for patch in (
+            "plutobook-0.20.0-static-font-variations.patch",
+            "fontconfig-2.18.3-quiet-cache-dirs.patch",
+            "fontconfig-2.18.3-keep-other-cache-versions.patch",
+        ):
             if bundle.read("patches/" + patch) != (run / "tools/patches" / patch).read_bytes():
                 sys.exit(f"Renderer was built with a different {patch}")
         with bundle.open("bin/libplutobook-0.dll") as src, (directory / "libplutobook-0.dll").open("wb") as dest:
