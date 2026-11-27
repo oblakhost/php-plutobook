@@ -325,7 +325,10 @@ Templates often contain user data, so the extension is strict by default.
   this needs `/proc`, so it works in an FPM `chroot`.
 - On Windows, the folder is pinned while in use, and junctions, symlinks, UNC
   paths, device names and alternate data streams are refused.
-- Devices, FIFOs and sockets are never read.
+- Devices, FIFOs and sockets are never read. On Linux with `/proc` mounted, a file
+  swapped for one after the checks isn't even opened. Without `/proc`, such as in an
+  FPM `chroot`, it can be opened for a moment, without waiting on it, and is then
+  closed unread.
 
 **Downloads**
 

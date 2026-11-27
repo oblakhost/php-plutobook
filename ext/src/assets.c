@@ -9,7 +9,11 @@
 #include "assets_win32.h"
 #include <io.h>
 #else
+#include <sys/vfs.h>
 #include <unistd.h>
+#ifndef PROC_SUPER_MAGIC
+#define PROC_SUPER_MAGIC 0x9fa0
+#endif
 #endif
 
 // Reason codes are public API through Document::getResourceErrors(); keep them stable.
@@ -306,9 +310,33 @@ static php_plutobook_asset_status php_plutobook_check_file(const struct stat *st
 	return PHP_PLUTOBOOK_ASSET_OK;
 }
 
+// Open the inode behind an O_PATH descriptor for reading, through procfs. Only a real procfs
+// is trusted, so a fake /proc directory in a writable chroot cannot redirect the open.
+// Returns -1 with errno ENOENT when no procfs is mounted.
+static int php_plutobook_reopen(int pinned)
+{
+	int fds = open("/proc/self/fd", O_PATH | O_DIRECTORY | O_CLOEXEC);
+	struct statfs fs;
+	if (fds < 0 || fstatfs(fds, &fs) != 0 || fs.f_type != PROC_SUPER_MAGIC) {
+		if (fds >= 0) {
+			close(fds);
+		}
+		errno = ENOENT;
+		return -1;
+	}
+	char name[MAX_LENGTH_OF_LONG];
+	snprintf(name, sizeof(name), "%d", pinned);
+	int reader = openat(fds, name, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+	int error = errno;
+	close(fds);
+	errno = error;
+	return reader;
+}
+
 // Inspect the entry through O_PATH first, which never opens a device, FIFO or socket for I/O.
-// Then reopen it by name for reading. O_NONBLOCK keeps a FIFO swapped in meanwhile from
-// blocking, and the device/inode comparison rejects any replacement.
+// Then reopen that same inode for reading through procfs, so a replacement is never opened.
+// Without procfs, as in an FPM chroot, reopen by name: O_NONBLOCK keeps a FIFO swapped in
+// meanwhile from blocking, and the device/inode comparison rejects it before any read.
 static php_plutobook_asset_status php_plutobook_open_leaf(int parent, const char *leaf,
                                                           size_t *size, int *reader)
 {
@@ -320,11 +348,19 @@ static php_plutobook_asset_status php_plutobook_open_leaf(int parent, const char
 	php_plutobook_asset_status status = fstat(pinned, &expected) == 0
 	                                        ? php_plutobook_check_file(&expected)
 	                                        : PHP_PLUTOBOOK_ASSET_READ_ERROR;
+	if (status == PHP_PLUTOBOOK_ASSET_OK) {
+		*reader = php_plutobook_reopen(pinned);
+		if (*reader < 0 && errno == ENOENT) {
+			*reader =
+			    openat(parent, leaf, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_NOCTTY | O_CLOEXEC);
+		}
+	}
+	int error = errno;
 	close(pinned);
+	errno = error;
 	if (status != PHP_PLUTOBOOK_ASSET_OK) {
 		return status;
 	}
-	*reader = openat(parent, leaf, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_NOCTTY | O_CLOEXEC);
 	if (*reader < 0) {
 		return php_plutobook_open_error(errno);
 	}
