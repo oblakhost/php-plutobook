@@ -8,6 +8,10 @@
 #                                                 Ondřej Surý's packages (same paths)
 #   php-plutobook-1.2.0-1.php83.el9.x86_64.rpm    EL8, EL9 and EL10 with PHP in /usr
 #                                                 (AppStream or Remi modular streams)
+# and on x86_64, which is all cPanel runs on, for cPanel's EasyApache 4 PHP (ea-php83):
+#   oblak-ea-php83-plutobook-1.2.0-1.el9.x86_64.rpm   AlmaLinux, Rocky Linux and
+#                                                     CloudLinux 8, 9 and 10
+#   oblak-ea-php83-plutobook_1.2.0-1_amd64.deb        Ubuntu 22.04 and 24.04
 # EL8 packages carry the el8 module, everything else the linux module.
 # PLUTOBOOK_PACKAGE_MAINTAINER overrides the Maintainer and Packager fields.
 set -euo pipefail
@@ -178,6 +182,195 @@ YAML
   "$nfpm" package --config "$dir/nfpm.yaml" --packager rpm --target "$out/"
 }
 
+# cPanel packages: one install or removal script per hook, each the shared functions from
+# tools/packages/cpanel/refresh.sh followed by its action (read from stdin).
+cpanel_hook() {
+  { echo '#!/bin/sh'; cat "$root/tools/packages/cpanel/refresh.sh"; echo; cat; echo 'exit 0'; } > "$1"
+}
+
+# rpm runs %posttrans once per installed package after the whole transaction, and erases
+# have no %posttrans; deb defers to a trigger that dpkg processes after configuring.
+# Final removal only refreshes CageFS: running PHP keeps the module it loaded.
+cpanel_hooks() {
+  local dir=$1 nn=$2
+  cpanel_hook "$dir/post" <<SH
+plutobook_check_duplicate $nn
+plutobook_refresh_due
+SH
+  cpanel_hook "$dir/posttrans" <<'SH'
+plutobook_refresh_if_due
+SH
+  cpanel_hook "$dir/postun" <<'SH'
+[ "$1" = 0 ] && plutobook_cagefs_update
+SH
+  cpanel_hook "$dir/postinst" <<SH
+case "\$1" in
+    configure)
+        plutobook_check_duplicate $nn
+        plutobook_refresh_due
+        dpkg-trigger --no-await "\$PLUTOBOOK_TRIGGER" 2> /dev/null || plutobook_refresh_if_due
+        ;;
+    triggered)
+        plutobook_refresh_if_due
+        ;;
+esac
+SH
+  cpanel_hook "$dir/postrm" <<'SH'
+case "$1" in
+    remove) plutobook_cagefs_update ;;
+esac
+SH
+}
+
+# CloudLinux builds each cage from a skeleton without the DejaVu fonts; this lists the
+# font package's fonts and fontconfig snippets so CageFS copies them in.
+cpanel_cagefs_cfg() {
+  local file=$1 nn=$2 paths=$3
+  printf '[oblak-ea-php%s-plutobook]\ncomment=DejaVu fonts for the PlutoBook PHP extension (ea-php%s)\npaths=%s\n' \
+    "$nn" "$nn" "$paths" > "$file"
+}
+
+cpanel_deb() {
+  local minor=$1 nn=${1/./} module dir name
+  module=$(module_for linux "$minor")
+  name=oblak-ea-php$nn-plutobook
+  dir="$work/cpanel-deb-$minor"
+  mkdir -p "$dir"
+  cpanel_hooks "$dir" "$nn"
+  # fonts-dejavu-core: Ubuntu 22.04 has more snippets than 24.04, so whole directories.
+  cpanel_cagefs_cfg "$dir/cagefs.cfg" "$nn" \
+    "/usr/share/fonts/truetype/dejavu/, /etc/fonts/conf.avail/, /etc/fonts/conf.d/"
+  # The ini is a plain file, not a conffile: apt remove would keep a conffile, and PHP
+  # would then warn about the missing module on every start.
+  cat > "$dir/nfpm.yaml" <<YAML
+name: $name
+arch: amd64
+platform: linux
+version: $version
+release: "1"
+section: php
+priority: optional
+maintainer: $maintainer
+homepage: $homepage
+license: Apache-2.0
+description: |-
+  PlutoBook HTML-to-PDF extension for cPanel ea-php$nn
+  Renders HTML and CSS to PDF in cPanel EasyApache 4's ea-php$nn (PHP $minor).
+  Installing it restarts PHP-FPM and Apache and refreshes CloudLinux CageFS,
+  as cPanel's own PHP packages do.
+depends:
+  - ea-php$nn-php-common
+  - libc6 (>= 2.28)
+  - libstdc++6 (>= 8)
+  - libgcc-s1 | libgcc1
+  - libcurl4 (>= 7.68.0) | libcurl4t64 (>= 7.68.0)
+  - fontconfig-config
+  - fonts-dejavu-core
+contents:
+  - src: $module
+    dst: /opt/cpanel/ea-php$nn/root/usr/lib64/php/modules/plutobook.so
+    file_info:
+      mode: 0644
+  - src: $root/tools/packages/cpanel/20-plutobook.ini
+    dst: /opt/cpanel/ea-php$nn/root/etc/php.d/20-plutobook.ini
+    file_info:
+      mode: 0644
+  - src: $dir/cagefs.cfg
+    dst: /etc/cagefs/conf.d/$name.cfg
+    file_info:
+      mode: 0644
+  - src: $work/doc
+    dst: /usr/share/doc/$name
+    type: tree
+scripts:
+  postinstall: $dir/postinst
+  postremove: $dir/postrm
+deb:
+  triggers:
+    interest_noawait:
+      - oblak-ea-plutobook-refresh
+YAML
+  "$nfpm" package --config "$dir/nfpm.yaml" --packager deb --target "$out/"
+}
+
+cpanel_rpm() {
+  local el=$1 minor=$2 nn=${2/./} variant=linux module api dir name curl
+  # dejavu-sans-fonts' font directory and fontconfig snippet; EL8 names them differently.
+  local fonts=dejavu-sans-fonts snippet=57-dejavu-sans-fonts.conf
+  curl='  - libcurl.so.4()(64bit)'
+  if [[ $el == 8 ]]; then
+    variant=el8
+    curl=$'  - libgnutls.so.30()(64bit)\n  - libnettle.so.6()(64bit)'
+    fonts=dejavu snippet=57-dejavu-sans.conf
+  fi
+  module=$(module_for "$variant" "$minor")
+  api=$(< "${module%/*}/phpapi")
+  name=oblak-ea-php$nn-plutobook
+  dir="$work/cpanel-rpm-el$el-$minor"
+  mkdir -p "$dir"
+  cpanel_hooks "$dir" "$nn"
+  cpanel_cagefs_cfg "$dir/cagefs.cfg" "$nn" "/usr/share/fonts/$fonts/, \
+/etc/fonts/conf.d/20-unhint-small-dejavu-sans.conf, /etc/fonts/conf.d/$snippet, \
+/usr/share/fontconfig/conf.avail/20-unhint-small-dejavu-sans.conf, \
+/usr/share/fontconfig/conf.avail/$snippet"
+  cat > "$dir/nfpm.yaml" <<YAML
+name: $name
+arch: amd64
+platform: linux
+version: $version
+release: 1.el$el
+maintainer: $maintainer
+vendor: oblakhost
+homepage: $homepage
+license: Apache-2.0
+description: |-
+  PlutoBook HTML-to-PDF extension for cPanel EasyApache 4's ea-php$nn (PHP $minor).
+  Renders HTML and CSS to PDF. Installing it restarts PHP-FPM and Apache and
+  refreshes CloudLinux CageFS, as cPanel's own PHP packages do.
+depends:
+  - ea-php$nn-php(api) = $api-64
+  - fontconfig
+  - dejavu-sans-fonts
+$curl
+contents:
+  - src: $module
+    dst: /opt/cpanel/ea-php$nn/root/usr/lib64/php/modules/plutobook.so
+    file_info:
+      mode: 0755
+  - src: $root/tools/packages/cpanel/20-plutobook.ini
+    dst: /opt/cpanel/ea-php$nn/root/etc/php.d/20-plutobook.ini
+    type: config|noreplace
+  - src: $dir/cagefs.cfg
+    dst: /etc/cagefs/conf.d/$name.cfg
+    file_info:
+      mode: 0644
+  - dst: /usr/share/licenses/$name
+    type: dir
+  - dst: /usr/share/doc/$name
+    type: dir
+  - src: $work/doc/LICENSE
+    dst: /usr/share/licenses/$name/LICENSE
+    type: license
+  - src: $work/doc/licenses
+    dst: /usr/share/licenses/$name/bundled
+    type: tree
+  - src: $work/doc/THIRD_PARTY.md
+    dst: /usr/share/doc/$name/THIRD_PARTY.md
+    type: doc
+scripts:
+  postinstall: $dir/post
+  postremove: $dir/postun
+rpm:
+  summary: PlutoBook HTML-to-PDF extension for cPanel ea-php$nn
+  group: Development/Languages
+  packager: $maintainer
+  compression: xz
+  scripts:
+    posttrans: $dir/posttrans
+YAML
+  "$nfpm" package --config "$dir/nfpm.yaml" --packager rpm --target "$out/"
+}
+
 for dir in "$dist"/linux/php*/; do
   minor=${dir%/}
   minor=${minor##*/php}
@@ -185,5 +378,11 @@ for dir in "$dist"/linux/php*/; do
   rpm 9 "$minor"
   rpm 10 "$minor"
   rpm 8 "$minor"
+  if [[ $arch == amd64 ]]; then
+    cpanel_deb "$minor"
+    cpanel_rpm 9 "$minor"
+    cpanel_rpm 10 "$minor"
+    cpanel_rpm 8 "$minor"
+  fi
 done
 ls -l "$out"
