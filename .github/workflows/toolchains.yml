@@ -54,6 +54,18 @@ jobs:
           scripts/bootstrap-qa "$PHP_RELEASE"
           scripts/check-php "$PHP_RELEASE"
           scripts/unit-coverage "$PHP_RELEASE"
+      - name: Locate the unit coverage report
+        id: coverage
+        if: matrix.php == fromJSON(needs.releases.outputs.versions)[0] && matrix.flavor == 'nts'
+        run: echo "file=$(find artifacts/coverage -name coverage.xml -print -quit)" >> "$GITHUB_OUTPUT"
+      - name: Upload unit coverage to Codecov
+        if: steps.coverage.outputs.file != ''
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ steps.coverage.outputs.file }}
+          disable_search: true
+          flags: unit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
