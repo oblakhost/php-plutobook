@@ -73,7 +73,7 @@ step() {
 part() {
   local name=$1 key
   shift
-  key=$({ uname -m; declare -f "$name" bundle unpack icu_trim; cat "$@"; } | sha256sum | cut -c1-16)
+  key=$({ uname -m; declare -f "$name" bundle unpack icu_trim; cat "$root/tools/portable/Containerfile" "$@"; } | sha256sum | cut -c1-16)
   if [[ -f "$stack/$name.key" && $(< "$stack/$name.key") == "$key" ]]; then
     echo "== $name (up to date)"
     return
