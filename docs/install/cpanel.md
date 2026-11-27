@@ -149,7 +149,11 @@ again in clean containers with cPanel's public EasyApache 4 repository:
 | ![](../assets/icons/almalinux.svg) AlmaLinux 9 | `ea-php84` |
 | ![](../assets/icons/almalinux.svg) AlmaLinux 10 | `ea-php86` |
 | ![](../assets/icons/ubuntu.svg) Ubuntu 22.04 | `ea-php83` |
-| ![](../assets/icons/ubuntu.svg) Ubuntu 24.04 | `ea-php85` |
+
+Ubuntu 24.04 uses the same deb as 22.04, but its test is paused for now: cPanel's
+EasyApache 4 repository for Ubuntu 24.04 currently serves package lists that don't
+match its signed index, so `apt` refuses to install `ea-php` from it. The test comes
+back once cPanel fixes the repository.
 
 The CageFS refresh, the restarts and rendering inside a website's cage were also
 checked on a real CloudLinux 9 cPanel server running mod_lsapi.
