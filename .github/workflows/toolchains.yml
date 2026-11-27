@@ -1,5 +1,18 @@
 name: Extension checks
-on: [push, pull_request]
+# Pushes always run. A push during a release stops that release (release.yml
+# gives up when master has moved on), so the new push's own run must release
+# instead; skipping docs-only pushes would leave nothing to release. Docs-only
+# pull requests skip this workflow.
+on:
+  push:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - 'README.md'
+      - 'INSTALL.md'
+      - 'CONTRIBUTING.md'
+      - '.github/workflows/docs.yml'
 
 permissions:
   contents: read

@@ -1,0 +1,36 @@
+/* PHP purple (#777BB4) as the primary color, lighter in dark mode for contrast. */
+:root {
+  --ifm-color-primary: #5e62a3;
+  --ifm-color-primary-dark: #555993;
+  --ifm-color-primary-darker: #50538b;
+  --ifm-color-primary-darkest: #424572;
+  --ifm-color-primary-light: #6f73ae;
+  --ifm-color-primary-lighter: #777bb4;
+  --ifm-color-primary-lightest: #9295c4;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #a3a6d4;
+  --ifm-color-primary-dark: #8e92ca;
+  --ifm-color-primary-darker: #8388c5;
+  --ifm-color-primary-darkest: #6267b4;
+  --ifm-color-primary-light: #b8badf;
+  --ifm-color-primary-lighter: #c3c5e4;
+  --ifm-color-primary-lightest: #e2e3f2;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Distro icons sit on the text line, with a little room before the name. */
+.markdown table img {
+  vertical-align: text-bottom;
+  margin-right: 0.35em;
+}
+
+/* Wide tables (platforms, settings, reasons) scroll inside themselves on phones. */
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}

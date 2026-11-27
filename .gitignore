@@ -13,3 +13,8 @@
 /artifacts/
 /node_modules/
 /tools/qa/vendor/
+
+# Documentation site (website/)
+/website/node_modules/
+/website/build/
+/website/.docusaurus/

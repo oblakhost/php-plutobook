@@ -168,7 +168,8 @@ back to `ext/src/` and keeps Codecov's own checks informational.
 ### Portable Linux modules
 
 Binary releases and packages use a self-contained `plutobook.so` per PHP minor
-version for Linux x86_64. [INSTALL.md](INSTALL.md#whats-in-the-linux-build)
+version for Linux x86_64 and aarch64, built on a host of that architecture.
+[What the ready-made builds contain](docs/install/index.md#what-the-ready-made-builds-contain)
 describes the `linux` and `el8` variants for users. Build them with Podman or Docker:
 
 ```sh
@@ -188,7 +189,7 @@ later need OpenSSL 3.
 
 `PLUTOBOOK_RELEASE_VERSION=1.2.0` embeds the release version and writes PIE's
 pre-packaged binaries to `build/portable/release/`, one per PHP minor version:
-`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` holds the `linux` module as
+`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` (`arm64` on aarch64) holds the `linux` module as
 `plutobook.so`, with `LICENSE`, `THIRD_PARTY.md` and the bundled libraries'
 `licenses/`. PIE names Linux binaries after the C library they need. PIE cannot tell
 EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only.
@@ -218,11 +219,25 @@ absence of run paths.
 minor version, in `build/portable/packages/`. It takes the same
 `PLUTOBOOK_RELEASE_VERSION` as the modules and refuses modules built without it.
 The deb packages and the EL9 and EL10 rpm packages carry the `linux` module, and
-the EL8 rpm packages carry the `el8` module. `PLUTOBOOK_PACKAGE_MAINTAINER` sets
+the EL8 rpm packages carry the `el8` module. On aarch64 the packages are
+`…_arm64.deb` and `….aarch64.rpm`. `PLUTOBOOK_PACKAGE_MAINTAINER` sets
 the Maintainer field. `scripts/test-packages` installs each package in a clean
 container with that distribution's PHP, or Surý's or Remi's where the
 distribution lacks the version, renders a page, removes the package and checks
 that nothing is left.
+
+## Documentation
+
+The user documentation at [php.plutobook.dev](https://php.plutobook.dev) is built
+from the Markdown in `docs/` and is the source of truth. Change `docs/` first, then
+update the README if it repeats the same fact. Keep pages plain Markdown that reads
+well on GitHub: relative links between pages, no HTML or MDX, and the sidebar order
+in `website/sidebars.js`. Follow the plain, short style of the existing pages.
+
+To preview the site, run `npm ci` and `npm start` in `website/`. `npm run build`
+fails on broken links and anchors. The Documentation workflow
+(`.github/workflows/docs.yml`) builds every pull request that touches `docs/` or
+`website/` and deploys `master` to GitHub Pages.
 
 ## Release
 

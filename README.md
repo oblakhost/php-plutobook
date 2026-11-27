@@ -4,11 +4,13 @@
 
 **Make PDFs from HTML and CSS, right inside PHP.**
 
+**[Documentation](https://php.plutobook.dev)** · [Installation](https://php.plutobook.dev/install) · [API reference](https://php.plutobook.dev/reference/api)
+
 [![Packagist](https://img.shields.io/packagist/v/oblakhost/ext-plutobook?logo=packagist&logoColor=white)](https://packagist.org/packages/oblakhost/ext-plutobook)
 [![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](#installation)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[![Linux x86_64](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](#installation)
+[![Linux x86_64 and arm64](https://img.shields.io/badge/Linux-x86__64%20%7C%20arm64-FCC624?logo=linux&logoColor=black)](#installation)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+)](#installation)
 
 [![CI](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml/badge.svg?branch=master)](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml)
@@ -47,8 +49,8 @@ $document->writeToFile('invoice-42.pdf');
   pass in, unless you allow it.
 - **Tells you what's missing.** `getResourceErrors()` lists every image, font or
   stylesheet that couldn't be loaded, and why.
-- **Ready-made builds.** For PHP 8.2 to 8.6 on Linux and Windows, plus deb and rpm
-  packages.
+- **Ready-made builds.** For PHP 8.2 to 8.6 on Linux (x86_64 and arm64) and Windows
+  (x64), plus deb and rpm packages.
 
 ## Installation
 
@@ -62,20 +64,24 @@ from source when there isn't. Every
 [release](https://github.com/oblakhost/php-plutobook/releases/latest) also has deb
 and rpm packages if you'd rather use your system's package manager.
 
-All platforms below support PHP 8.2 to 8.6.
+All platforms below support PHP 8.2 to 8.6. Linux builds cover x86_64 and arm64
+(aarch64), and Windows builds cover x64.
 
 | Platform | Versions | PHP from | Install with |
 | --- | --- | --- | --- |
-| ![Debian](https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white) | 12, 13 | Debian or [Surý's repository](https://deb.sury.org/) | [deb package](INSTALL.md#debian-and-ubuntu) or PIE |
-| ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white) | 22.04, 24.04 | Ubuntu or [Surý's PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) | [deb package](INSTALL.md#debian-and-ubuntu) or PIE |
-| ![RHEL, AlmaLinux, Rocky Linux](https://img.shields.io/badge/RHEL%20%C2%B7%20AlmaLinux%20%C2%B7%20Rocky-EE0000?logo=redhat&logoColor=white) | 8, 9, 10 | AppStream or [Remi's repository](https://rpms.remirepo.net/) | [rpm package](INSTALL.md#rhel-almalinux-rocky-linux-and-cloudlinux), or PIE on 9 and 10 |
-| ![Linux](https://img.shields.io/badge/Other%20Linux-FCC624?logo=linux&logoColor=black) | glibc 2.28 or newer | any non-thread-safe build | [PIE](INSTALL.md#other-linux-distributions) |
-| ![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+) | x64 | thread-safe or not | [PIE](INSTALL.md#windows) |
+| ![Debian](https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white) | 12, 13 | Debian or [Surý's repository](https://deb.sury.org/) | [deb package](https://php.plutobook.dev/install/debian-ubuntu) or PIE |
+| ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white) | 22.04, 24.04 | Ubuntu or [Surý's PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) | [deb package](https://php.plutobook.dev/install/debian-ubuntu) or PIE |
+| ![RHEL, AlmaLinux, Rocky Linux](https://img.shields.io/badge/RHEL%20%C2%B7%20AlmaLinux%20%C2%B7%20Rocky-EE0000?logo=redhat&logoColor=white) | 8, 9, 10 | AppStream or [Remi's repository](https://rpms.remirepo.net/) | [rpm package](https://php.plutobook.dev/install/rhel), or PIE on 9 and 10 |
+| ![cPanel](https://img.shields.io/badge/cPanel-FF6C2C?logo=cpanel&logoColor=white) | EL 8, 9, 10; Ubuntu 22.04, 24.04 | EasyApache 4 (`ea-php82` to `ea-php86`) | [oblak-ea package](https://php.plutobook.dev/install/cpanel) |
+| ![Linux](https://img.shields.io/badge/Other%20Linux-FCC624?logo=linux&logoColor=black) | glibc 2.28 or newer | any non-thread-safe build | [PIE](https://php.plutobook.dev/install/other-linux) |
+| ![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+) | x64 | thread-safe or not | [PIE](https://php.plutobook.dev/install/windows) |
 
 On Linux with thread-safe PHP or musl (Alpine), PIE compiles the extension, which
 needs the PlutoBook library installed first. macOS isn't supported.
-[INSTALL.md](INSTALL.md) has step-by-step instructions for every platform, how to
-verify downloads and how to build from source.
+The [installation guide](https://php.plutobook.dev/install) has step-by-step
+instructions for every platform, how to verify downloads and how to build from
+source. The full, current documentation is at
+[php.plutobook.dev](https://php.plutobook.dev).
 
 ## Usage
 

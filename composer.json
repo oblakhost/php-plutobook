@@ -1,6 +1,7 @@
 {
   "name": "oblakhost/ext-plutobook",
   "description": "Native PHP extension for rendering HTML and CSS to PDF with PlutoBook",
+  "homepage": "https://php.plutobook.dev",
   "type": "php-ext",
   "require": {
     "php": ">=8.2 <8.7"
