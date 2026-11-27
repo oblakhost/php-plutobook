@@ -9,6 +9,12 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 packages="$root/build/portable/packages"
 logs="$root/build/portable/package-tests"
 engine=${CONTAINER_ENGINE:-$(command -v podman || command -v docker)}
+# Packages of the host's architecture; the base images run natively on x86_64 and aarch64.
+case $(uname -m) in
+  x86_64) deb=amd64 rpm=x86_64 ;;
+  aarch64) deb=arm64 rpm=aarch64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
 
 apt_install='export DEBIAN_FRONTEND=noninteractive; apt-get -qq update && apt-get -qq install -y --no-install-recommends'
 # Ondřej Surý's PHP builds, for PHP versions the distribution lacks.
@@ -19,19 +25,19 @@ remi() { echo "dnf -y -q install epel-release https://rpms.remirepo.net/enterpri
 
 # name | image | package glob | PHP setup before installing the package
 scenarios=(
-  "debian12-php8.2|docker.io/library/debian:12|php8.2-plutobook_*.deb|true"
-  "ubuntu2404-php8.3|docker.io/library/ubuntu:24.04|php8.3-plutobook_*.deb|true"
-  "debian13-php8.4|docker.io/library/debian:13|php8.4-plutobook_*.deb|true"
-  "ubuntu2204-php8.3-sury|docker.io/library/ubuntu:22.04|php8.3-plutobook_*.deb|$sury_ubuntu"
-  "debian13-php8.5-sury|docker.io/library/debian:13|php8.5-plutobook_*.deb|$sury_debian"
-  "debian13-php8.6-sury|docker.io/library/debian:13|php8.6-plutobook_*.deb|$sury_debian"
-  "el8-php8.2|docker.io/library/almalinux:8|php-plutobook-*.php82.el8.x86_64.rpm|dnf -y -q module enable php:8.2"
-  "el8-php8.4-remi|docker.io/library/almalinux:8|php-plutobook-*.php84.el8.x86_64.rpm|$(remi 8 8.4)"
-  "el9-php8.3|docker.io/library/almalinux:9|php-plutobook-*.php83.el9.x86_64.rpm|dnf -y -q module enable php:8.3"
-  "el9-php8.5-remi|docker.io/library/almalinux:9|php-plutobook-*.php85.el9.x86_64.rpm|$(remi 9 8.5)"
-  "el9-php8.6-remi|docker.io/library/almalinux:9|php-plutobook-*.php86.el9.x86_64.rpm|$(remi 9 8.6)"
-  "el10-php8.3|docker.io/library/almalinux:10|php-plutobook-*.php83.el10.x86_64.rpm|true"
-  "el10-php8.4-remi|docker.io/library/almalinux:10|php-plutobook-*.php84.el10.x86_64.rpm|$(remi 10 8.4)"
+  "debian12-php8.2|docker.io/library/debian:12|php8.2-plutobook_*_$deb.deb|true"
+  "ubuntu2404-php8.3|docker.io/library/ubuntu:24.04|php8.3-plutobook_*_$deb.deb|true"
+  "debian13-php8.4|docker.io/library/debian:13|php8.4-plutobook_*_$deb.deb|true"
+  "ubuntu2204-php8.3-sury|docker.io/library/ubuntu:22.04|php8.3-plutobook_*_$deb.deb|$sury_ubuntu"
+  "debian13-php8.5-sury|docker.io/library/debian:13|php8.5-plutobook_*_$deb.deb|$sury_debian"
+  "debian13-php8.6-sury|docker.io/library/debian:13|php8.6-plutobook_*_$deb.deb|$sury_debian"
+  "el8-php8.2|docker.io/library/almalinux:8|php-plutobook-*.php82.el8.$rpm.rpm|dnf -y -q module enable php:8.2"
+  "el8-php8.4-remi|docker.io/library/almalinux:8|php-plutobook-*.php84.el8.$rpm.rpm|$(remi 8 8.4)"
+  "el9-php8.3|docker.io/library/almalinux:9|php-plutobook-*.php83.el9.$rpm.rpm|dnf -y -q module enable php:8.3"
+  "el9-php8.5-remi|docker.io/library/almalinux:9|php-plutobook-*.php85.el9.$rpm.rpm|$(remi 9 8.5)"
+  "el9-php8.6-remi|docker.io/library/almalinux:9|php-plutobook-*.php86.el9.$rpm.rpm|$(remi 9 8.6)"
+  "el10-php8.3|docker.io/library/almalinux:10|php-plutobook-*.php83.el10.$rpm.rpm|true"
+  "el10-php8.4-remi|docker.io/library/almalinux:10|php-plutobook-*.php84.el10.$rpm.rpm|$(remi 10 8.4)"
 )
 
 # tools/packages/check-install installs, renders, removes and looks for leftovers.

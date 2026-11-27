@@ -44,6 +44,12 @@ else
 fi
 # Hardened, with sections the final link can drop when nothing uses them.
 cflags="-O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffunction-sections -fdata-sections"
+# The dynamic loader a module may link, and PIE's name for the architecture.
+case $(uname -m) in
+  x86_64) loader=ld-linux-x86-64.so.2 pie_arch=x86_64 ;;
+  aarch64) loader=ld-linux-aarch64.so.1 pie_arch=arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
 
 # Run one step in a subshell with its output in artifacts/portable/NAME.log. Bash ignores
 # set -e in a function called from a condition, so the status is checked afterwards.
@@ -62,11 +68,12 @@ step() {
   fi
 }
 
-# Build a part of the stack again when its function or one of its input files changes.
+# Build a part of the stack again when its function or one of its input files changes. The
+# architecture is part of the key, so a cache restored from another one is rebuilt.
 part() {
   local name=$1 key
   shift
-  key=$({ declare -f "$name" bundle unpack icu_trim; cat "$@"; } | sha256sum | cut -c1-16)
+  key=$({ uname -m; declare -f "$name" bundle unpack icu_trim; cat "$@"; } | sha256sum | cut -c1-16)
   if [[ -f "$stack/$name.key" && $(< "$stack/$name.key") == "$key" ]]; then
     echo "== $name (up to date)"
     return
@@ -318,7 +325,7 @@ install_module() {
 # runtime and keeps Cairo, FreeType, ICU and libcurl symbols to itself.
 check_module() {
   local so=$1 variant=$2 allowed dynamic lib exports kind limit newest
-  allowed=" libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 libstdc++.so.6 libgcc_s.so.1 ld-linux-x86-64.so.2 "
+  allowed=" libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 librt.so.1 libstdc++.so.6 libgcc_s.so.1 $loader "
   case $variant in
     linux) allowed+="libcurl.so.4 " ;;
     el8) allowed+="libgnutls.so.30 libnettle.so.6 " ;;
@@ -388,13 +395,13 @@ test_module() {
 }
 
 # PIE's pre-packaged binary for one PHP release, in the name PIE looks for:
-# php_plutobook-VERSION_phpX.Y-x86_64-linux-glibc-nts.zip with plutobook.so at the root,
+# php_plutobook-VERSION_phpX.Y-ARCH-linux-glibc-nts.zip with plutobook.so at the root,
 # next to this project's license, the third-party notices and the bundled licenses.
 # Fixed timestamps keep the archive the same for the same module.
 release_asset() {
   local version=$1 out=/work/release
   mkdir -p "$out"
-  python3 - "$out/php_plutobook-${release}_php${version%.*}-x86_64-linux-glibc-nts.zip" \
+  python3 - "$out/php_plutobook-${release}_php${version%.*}-$pie_arch-linux-glibc-nts.zip" \
     "$dist/linux/php${version%.*}/plutobook.so" "$root/LICENSE" "$root/THIRD_PARTY.md" \
     "$dist/licenses" <<'PY'
 import os

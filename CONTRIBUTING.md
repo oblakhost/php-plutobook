@@ -84,9 +84,12 @@ A successful push to master then calls the reusable release workflow
 
 1. **version** runs semantic-release as a dry run. `scripts/release-version.mjs`
    writes the next version to the job outputs. No version, no release.
-2. **linux** runs `scripts/build-portable`, `scripts/build-packages` and
-   `scripts/test-packages` with `PLUTOBOOK_RELEASE_VERSION` set to that version,
-   and uploads the PIE archives, the MPL sources and the packages.
+2. **linux** (`.github/workflows/portable.yml`) runs `scripts/build-portable`,
+   `scripts/build-packages` and `scripts/test-packages` with
+   `PLUTOBOOK_RELEASE_VERSION` set to that version, natively on x86_64
+   (`ubuntu-24.04`) and aarch64 (`ubuntu-24.04-arm`), and uploads the PIE archives,
+   the MPL sources and the packages. Pull requests that touch the build run the same
+   workflow with a placeholder version.
 3. **renderer** runs `scripts/build-windows-renderer` in the Linux job's private
    MinGW-w64 build environment. It builds the Windows x64 renderer once from the
    pinned graphics sources and patches and supplies the same DLL, header, and

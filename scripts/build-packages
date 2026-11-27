@@ -2,7 +2,8 @@
 # Package the portable modules from scripts/build-portable as deb and rpm files.
 # Usage: PLUTOBOOK_RELEASE_VERSION=1.2.0 scripts/build-packages
 #
-# Writes build/portable/packages/, one package per PHP minor version:
+# Writes build/portable/packages/, one package per PHP minor version, for the host's
+# architecture (amd64/x86_64 or arm64/aarch64):
 #   php8.3-plutobook_1.2.0-1_amd64.deb            Debian and Ubuntu, distribution PHP or
 #                                                 Ondřej Surý's packages (same paths)
 #   php-plutobook-1.2.0-1.php83.el9.x86_64.rpm    EL8, EL9 and EL10 with PHP in /usr
@@ -17,9 +18,15 @@ dist="$root/build/portable/dist"
 out="$root/build/portable/packages"
 work="$root/build/packages"
 homepage=https://github.com/oblakhost/php-plutobook
+# nFPM names architectures as Go does; it writes arm64 as aarch64 in rpm files.
+case $(uname -m) in
+  x86_64) arch=amd64 nfpm_host=x86_64 ;;
+  aarch64) arch=arm64 nfpm_host=arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
 
-archive=$("$root/scripts/fetch-source" nfpm_2.49.0_Linux_x86_64.tar.gz)
-nfpm="$root/.local/nfpm/2.49.0/nfpm"
+archive=$("$root/scripts/fetch-source" "nfpm_2.49.0_Linux_$nfpm_host.tar.gz")
+nfpm="$root/.local/nfpm/2.49.0/$nfpm_host/nfpm"
 if [[ ! -x $nfpm ]]; then
   mkdir -p "${nfpm%/*}"
   tar -xzf "$archive" -C "${nfpm%/*}" nfpm LICENSE.md
@@ -72,7 +79,7 @@ fi
 SH
   cat > "$dir/nfpm.yaml" <<YAML
 name: php$minor-plutobook
-arch: amd64
+arch: $arch
 platform: linux
 version: $version
 release: "1"
@@ -125,7 +132,7 @@ rpm() {
   mkdir -p "$dir"
   cat > "$dir/nfpm.yaml" <<YAML
 name: php-plutobook
-arch: amd64
+arch: $arch
 platform: linux
 version: $version
 release: 1.php${minor/./}.el$el
