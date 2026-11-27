@@ -53,7 +53,10 @@ if [[ $rpm == x86_64 ]]; then
     "cpanel-el9-php8.4|docker.io/library/almalinux:9|oblak-ea-php84-plutobook-*.el9.x86_64.rpm|$(ea4_el CentOS/9 1)"
     "cpanel-el10-php8.6|docker.io/library/almalinux:10|oblak-ea-php86-plutobook-*.el10.x86_64.rpm|$(ea4_el Almalinux/10 0)"
     "cpanel-ubuntu2204-php8.3|docker.io/library/ubuntu:22.04|oblak-ea-php83-plutobook_*_amd64.deb|$(ea4_ubuntu u22)"
-    "cpanel-ubuntu2404-php8.5|docker.io/library/ubuntu:24.04|oblak-ea-php85-plutobook_*_amd64.deb|$(ea4_ubuntu u24)"
+    # Skipped while cPanel's Ubuntu 24.04 repository is broken: since 2026-11-27 its
+    # InRelease lists older Packages files than every mirror serves, so apt rejects them.
+    # The same deb passes on 22.04. Put it back once the index matches (pdf-ext-zcs.17).
+    # "cpanel-ubuntu2404-php8.5|docker.io/library/ubuntu:24.04|oblak-ea-php85-plutobook_*_amd64.deb|$(ea4_ubuntu u24)"
     # Two packages in one transaction, with cPanel's restart scripts and cagefsctl stubbed.
     "cpanel-el9-scripts|docker.io/library/almalinux:9|oblak-ea-php82-plutobook-*.el9.x86_64.rpm oblak-ea-php83-plutobook-*.el9.x86_64.rpm|$(ea4_el CentOS/9 1)|check-cpanel-scripts"
     "cpanel-ubuntu2204-scripts|docker.io/library/ubuntu:22.04|oblak-ea-php84-plutobook_*_amd64.deb oblak-ea-php86-plutobook_*_amd64.deb|$(ea4_ubuntu u22)|check-cpanel-scripts"
