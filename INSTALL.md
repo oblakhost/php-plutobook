@@ -9,11 +9,12 @@ file names, `VERSION` stands for its version number.
 | Debian | 12, 13 | Debian or Surý's repository | [deb package](#debian-and-ubuntu) or [PIE](#any-platform-pie) |
 | Ubuntu | 22.04, 24.04 | Ubuntu or Surý's PPA | [deb package](#debian-and-ubuntu) or [PIE](#any-platform-pie) |
 | RHEL, AlmaLinux, Rocky Linux, CloudLinux | 8, 9, 10 | AppStream or Remi's repository | [rpm package](#rhel-almalinux-rocky-linux-and-cloudlinux), or [PIE](#any-platform-pie) on 9 and 10 |
-| Other Linux on x86_64 | glibc 2.28 or newer | any non-thread-safe build | [PIE](#other-linux-distributions) |
+| Other Linux on x86_64 or arm64 | glibc 2.28 or newer | any non-thread-safe build | [PIE](#other-linux-distributions) |
 | Linux with thread-safe PHP or musl | | | [PIE, compiling from source](#building-from-source) |
 | Windows | x64 | thread-safe or not | [PIE](#windows) |
 
-Every platform supports PHP 8.2 to 8.6. macOS isn't supported.
+Every platform supports PHP 8.2 to 8.6. Linux builds cover x86_64 and arm64
+(aarch64), and Windows builds cover x64. macOS isn't supported.
 
 - [Any platform: PIE](#any-platform-pie)
 - [Debian and Ubuntu](#debian-and-ubuntu)
@@ -37,9 +38,11 @@ php --ri plutobook
 
 PIE downloads a ready-made build when one matches your PHP:
 
-- **Linux:** x86_64 with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6, and
-  libcurl 7.68.0 or newer. For PHP 8.4 that is
-  `php_plutobook-VERSION_php8.4-x86_64-linux-glibc-nts.zip`.
+- **Linux:** x86_64 or arm64 with glibc 2.28 or newer and non-thread-safe PHP 8.2
+  to 8.6. For PHP 8.4 that is
+  `php_plutobook-VERSION_php8.4-x86_64-linux-glibc-nts.zip`, or
+  `php_plutobook-VERSION_php8.4-arm64-linux-glibc-nts.zip` on arm64. Remote files
+  also need the system's libcurl 7.68.0 or newer at run time.
 - **Windows:** x64 with PHP 8.2 to 8.6, thread-safe or not. For non-thread-safe
   PHP 8.4 that is `php_plutobook-VERSION-8.4-nts-vs17-x86_64.zip`.
 
@@ -49,6 +52,13 @@ configure options, PIE compiles the extension from the release's source archive.
 
 If `php --ri plutobook` says the extension isn't loaded, add `extension=plutobook`
 to your `php.ini`. Restart PHP-FPM or your web server afterwards.
+
+PIE finds and downloads the release files through GitHub's API, about two requests
+per install. GitHub allows 60 anonymous requests an hour per IP address, so on a
+shared address or in CI, give PIE a GitHub token through Composer's
+authentication, for example
+`COMPOSER_AUTH='{"github-oauth":{"github.com":"TOKEN"}}'`. PIE doesn't read
+`GITHUB_TOKEN`.
 
 ## Debian and Ubuntu
 
@@ -62,13 +72,15 @@ built for, because it depends on that PHP's API version (`phpapi-API`, such as
 
    ```sh
    php=$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')
+   arch=$(dpkg --print-architecture)
    version=$(basename "$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/oblakhost/php-plutobook/releases/latest)")
-   curl -fLO "https://github.com/oblakhost/php-plutobook/releases/download/$version/php$php-plutobook_$version-1_amd64.deb"
-   sudo apt install "./php$php-plutobook_$version-1_amd64.deb"
+   curl -fLO "https://github.com/oblakhost/php-plutobook/releases/download/$version/php$php-plutobook_$version-1_$arch.deb"
+   sudo apt install "./php$php-plutobook_$version-1_$arch.deb"
    ```
 
-   The first line reads your PHP version, such as `8.4`, and the second finds the
-   latest release. If PHP's command line isn't installed, set `php=8.4` yourself.
+   The first lines read your PHP version, such as `8.4`, and your architecture,
+   `amd64` or `arm64`. The third finds the latest release. If PHP's command line
+   isn't installed, set `php=8.4` yourself.
 
    The package turns the extension on for that PHP's CLI, FPM and Apache module
    with `phpenmod`, and installs the system font configuration and the DejaVu
@@ -101,7 +113,8 @@ To remove it, run `sudo apt remove php8.4-plutobook`.
 
 Packages are available for versions 8, 9 and 10, with PHP installed in `/usr` from
 AppStream or from Remi's repository. Each PHP version and system version has its
-own package, named `php-plutobook-VERSION-1.phpXY.elN.x86_64.rpm`. It installs only
+own package, named `php-plutobook-VERSION-1.phpXY.elN.ARCH.rpm`, where `ARCH` is
+`x86_64` or `aarch64`. It installs only
 next to the PHP it was built for, because it depends on that PHP's API version
 (`php(api) = API-64`, such as `php(api) = 20240924-64` for PHP 8.4).
 
@@ -111,17 +124,18 @@ next to the PHP it was built for, because it depends on that PHP's API version
    ```sh
    el=$(rpm -E %rhel)
    php=$(php -r 'echo PHP_MAJOR_VERSION, PHP_MINOR_VERSION;')
+   arch=$(uname -m)
    version=$(basename "$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/oblakhost/php-plutobook/releases/latest)")
-   rpm=php-plutobook-$version-1.php$php.el$el.x86_64.rpm
+   rpm=php-plutobook-$version-1.php$php.el$el.$arch.rpm
    curl -fLO "https://github.com/oblakhost/php-plutobook/releases/download/$version/$rpm"
    sudo rpm --import "https://github.com/oblakhost/php-plutobook/releases/download/$version/php-plutobook-signing-key.asc"
    rpm -K "$rpm"   # reports "digests signatures OK"
    sudo dnf install "./$rpm"
    ```
 
-   The first three lines read your system version (8, 9 or 10), your PHP version
-   (such as `84` for PHP 8.4) and the latest release. If PHP's command line isn't
-   installed, set `php=84` yourself.
+   The first lines read your system version (8, 9 or 10), your PHP version (such
+   as `84` for PHP 8.4), your architecture (`x86_64` or `aarch64`) and the latest
+   release. If PHP's command line isn't installed, set `php=84` yourself.
 
 2. Restart PHP-FPM and check:
 
@@ -150,8 +164,8 @@ To remove it, run `sudo dnf remove php-plutobook`.
 ### Tested combinations
 
 Every release's packages are installed, used to render a page and removed again in
-clean containers for these combinations. Packages exist for every PHP version from
-8.2 to 8.6 on each system.
+clean containers for these combinations, on both x86_64 and arm64. Packages exist
+for every PHP version from 8.2 to 8.6 on each system and architecture.
 
 | System | PHP | PHP from |
 | --- | --- | --- |
@@ -169,8 +183,8 @@ clean containers for these combinations. Packages exist for every PHP version fr
 
 ## Other Linux distributions
 
-On other x86_64 distributions with glibc 2.28 or newer, such as Fedora, Arch Linux
-or openSUSE, install with [PIE](#any-platform-pie). You need:
+On other distributions with glibc 2.28 or newer, such as Fedora, Arch Linux or
+openSUSE, on x86_64 or arm64, install with [PIE](#any-platform-pie). You need:
 
 - non-thread-safe PHP 8.2 to 8.6: `php -i | grep 'Thread Safety'` shows `disabled`
 - libcurl 7.68.0 or newer
@@ -184,11 +198,12 @@ or openSUSE, install with [PIE](#any-platform-pie). You need:
 
 ### What's in the Linux build
 
-PIE and the packages install a self-contained `plutobook.so`, one per PHP version.
+PIE and the packages install a self-contained `plutobook.so`, one per PHP version
+and architecture (x86_64 and arm64).
 It comes in two variants, which differ in where libcurl comes from:
 
 - **`linux`** runs on glibc 2.28 or newer (version 9 and later of the RHEL family,
-  Debian 10 and later, Ubuntu 20.04 and later) and uses the system's libcurl
+  Debian 11 and later, Ubuntu 20.04 and later) and uses the system's libcurl
   7.68.0 or newer. PIE installs it, and the deb packages and the version 9 and 10
   rpm packages contain it.
 - **`el8`** is for AlmaLinux, Rocky Linux and CloudLinux 8. It includes libcurl

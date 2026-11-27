@@ -8,7 +8,7 @@
 [![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](#installation)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[![Linux x86_64](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](#installation)
+[![Linux x86_64 and arm64](https://img.shields.io/badge/Linux-x86__64%20%7C%20arm64-FCC624?logo=linux&logoColor=black)](#installation)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+)](#installation)
 
 [![CI](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml/badge.svg?branch=master)](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml)
@@ -47,8 +47,8 @@ $document->writeToFile('invoice-42.pdf');
   pass in, unless you allow it.
 - **Tells you what's missing.** `getResourceErrors()` lists every image, font or
   stylesheet that couldn't be loaded, and why.
-- **Ready-made builds.** For PHP 8.2 to 8.6 on Linux and Windows, plus deb and rpm
-  packages.
+- **Ready-made builds.** For PHP 8.2 to 8.6 on Linux (x86_64 and arm64) and Windows
+  (x64), plus deb and rpm packages.
 
 ## Installation
 
@@ -62,7 +62,8 @@ from source when there isn't. Every
 [release](https://github.com/oblakhost/php-plutobook/releases/latest) also has deb
 and rpm packages if you'd rather use your system's package manager.
 
-All platforms below support PHP 8.2 to 8.6.
+All platforms below support PHP 8.2 to 8.6. Linux builds cover x86_64 and arm64
+(aarch64), and Windows builds cover x64.
 
 | Platform | Versions | PHP from | Install with |
 | --- | --- | --- | --- |
