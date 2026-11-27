@@ -2,22 +2,28 @@
 
 # PlutoBook for PHP
 
-[![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](composer.json)
-[![Platforms: Linux NTS and Windows x64](https://img.shields.io/badge/platform-Linux%20NTS%20%7C%20Windows%20x64-444)](#installation)
-[![PlutoBook 0.20.0](https://img.shields.io/badge/PlutoBook-0.20.0-29688A)](#building-against-system-libraries)
-[![Packagist: oblakhost/ext-plutobook](https://img.shields.io/packagist/v/oblakhost/ext-plutobook?label=PIE&logo=packagist&logoColor=white)](https://packagist.org/packages/oblakhost/ext-plutobook)
+**Make PDFs from HTML and CSS, right inside PHP.**
 
-[![CI: PHPT, CLI and FPM](https://img.shields.io/badge/CI-PHPT%20%2F%20CLI%20%2F%20FPM-2088FF?logo=githubactions&logoColor=white)](.github/workflows/toolchains.yml)
-[![Unit line coverage gate: 85%](https://img.shields.io/badge/unit%20coverage%20gate-85%25-444)](CONTRIBUTING.md#testing)
-[![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](release.config.mjs)
+[![Packagist](https://img.shields.io/packagist/v/oblakhost/ext-plutobook?logo=packagist&logoColor=white)](https://packagist.org/packages/oblakhost/ext-plutobook)
+[![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](#installation)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+[![Linux x86_64](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](#installation)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+)](#installation)
+
+[![CI](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml/badge.svg?branch=master)](https://github.com/oblakhost/php-plutobook/actions/workflows/toolchains.yml)
+[![Coverage](https://codecov.io/gh/oblakhost/php-plutobook/graph/badge.svg)](https://codecov.io/gh/oblakhost/php-plutobook)
+[![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](release.config.mjs)
 
 </div>
 
-`plutobook` is a compiled PHP extension that turns HTML and CSS into PDF bytes
-inside the PHP process. Each `PlutoBook\Document` owns a native PlutoBook
-document. The extension targets PHP 8.2–8.6 with PlutoBook 0.20.0 on Linux
-(NTS) and Windows x64 (NTS and TS).
+Write your invoice, report or ticket as an HTML page, and this extension turns it
+into a PDF. It runs inside PHP, so it works in your web app, CLI scripts and queue
+workers without a headless browser, a separate PDF service or shell commands.
+
+It is built on [PlutoBook](https://github.com/plutoprint/plutobook), a lightweight
+engine made for laying out pages for print. It is not a browser engine like
+Chromium or WebKit.
 
 ```php
 $document = new PlutoBook\Document(pageSize: 'A4', margins: '15mm');
@@ -25,192 +31,131 @@ $document->loadHtml(
     '<h1>Invoice 42</h1><p>Total: 120.00 EUR</p>',
     css: 'h1 { color: #194572 }',
 );
-
-$pdf = $document->toPdf();                    // Binary PHP string
-$document->writeToFile(__DIR__ . '/42.pdf');  // Local filesystem path
-// With an already open writable PHP stream: $document->writeToStream($stream);
+$document->writeToFile('invoice-42.pdf');
 ```
+
+## Features
+
+- **Runs inside PHP.** Install the extension and render. Nothing else to run or call.
+- **CSS for paper.** Page sizes and margins, running headers and footers, page
+  numbers, page breaks, flexbox, tables, multiple columns and SVG.
+- **Any language.** Right-to-left and complex scripts such as Arabic, Hebrew and
+  Hindi, plus emoji.
+- **Your images and fonts.** PNG, JPEG, WebP and SVG images, stylesheets and web
+  fonts, from folders you choose or websites you allow.
+- **Safe by default.** No network access, and no files outside the folders you
+  pass in, unless you allow it.
+- **Tells you what's missing.** `getResourceErrors()` lists every image, font or
+  stylesheet that couldn't be loaded, and why.
+- **Ready-made builds.** For PHP 8.2 to 8.6 on Linux and Windows, plus deb and rpm
+  packages.
 
 ## Installation
 
-Install the extension with [PIE](https://github.com/php/pie), configured for the
-PHP installation that should load it:
-
 ```sh
 pie install oblakhost/ext-plutobook
-php --ri plutobook
 ```
 
-PIE installs a pre-built module when the release has one for that PHP build and
-otherwise compiles the release's source archive. Every
-[GitHub release](https://github.com/oblakhost/php-plutobook/releases) carries the
-source archive, the Linux and Windows PIE binaries, deb and rpm packages, the
-source of the MPL-covered code in the binaries and signed checksums.
+[PIE](https://github.com/php/pie) is PHP's extension installer, the successor to
+PECL. It downloads a ready-made build for your PHP when there is one, and compiles
+from source when there isn't. Every
+[release](https://github.com/oblakhost/php-plutobook/releases/latest) also has deb
+and rpm packages if you'd rather use your system's package manager.
 
-### Linux with PIE
+All platforms below support PHP 8.2 to 8.6.
 
-PIE installs the release's pre-built module on x86_64 Linux with glibc 2.28 or
-newer, non-thread-safe PHP 8.2 to 8.6 and libcurl 7.68.0 or newer:
-`php_plutobook-1.0.0_php8.4-x86_64-linux-glibc-nts.zip` for PHP 8.4.
-Fontconfig and a font package such as DejaVu must be installed. Elsewhere, for
-example with thread-safe PHP, musl or configure options, PIE builds the release's
-source archive, which needs PlutoBook 0.20.0 and libcurl development files (see
-[Building against system libraries](#building-against-system-libraries)). On EL8,
-whose libcurl is too old for remote assets, install the EL8 rpm instead.
+| Platform | Versions | PHP from | Install with |
+| --- | --- | --- | --- |
+| ![Debian](https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white) | 12, 13 | Debian or [Surý's repository](https://deb.sury.org/) | [deb package](INSTALL.md#debian-and-ubuntu) or PIE |
+| ![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white) | 22.04, 24.04 | Ubuntu or [Surý's PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php) | [deb package](INSTALL.md#debian-and-ubuntu) or PIE |
+| ![RHEL, AlmaLinux, Rocky Linux](https://img.shields.io/badge/RHEL%20%C2%B7%20AlmaLinux%20%C2%B7%20Rocky-EE0000?logo=redhat&logoColor=white) | 8, 9, 10 | AppStream or [Remi's repository](https://rpms.remirepo.net/) | [rpm package](INSTALL.md#rhel-almalinux-rocky-linux-and-cloudlinux), or PIE on 9 and 10 |
+| ![Linux](https://img.shields.io/badge/Other%20Linux-FCC624?logo=linux&logoColor=black) | glibc 2.28 or newer | any non-thread-safe build | [PIE](INSTALL.md#other-linux-distributions) |
+| ![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMXYxMUgwem0xMyAwaDExdjExSDEzek0wIDEzaDExdjExSDB6bTEzIDBoMTF2MTFIMTN6Ii8+PC9zdmc+) | x64 | thread-safe or not | [PIE](INSTALL.md#windows) |
 
-### deb and rpm packages
+On Linux with thread-safe PHP or musl (Alpine), PIE compiles the extension, which
+needs the PlutoBook library installed first. macOS isn't supported.
+[INSTALL.md](INSTALL.md) has step-by-step instructions for every platform, how to
+verify downloads and how to build from source.
 
-Download the package for your PHP minor version from the
-[latest release](https://github.com/oblakhost/php-plutobook/releases/latest) and
-install it with the system package manager:
+## Usage
 
-```sh
-sudo apt install ./php8.4-plutobook_1.0.0-1_amd64.deb            # Debian and Ubuntu
-sudo dnf install ./php-plutobook-1.0.0-1.php84.el9.x86_64.rpm    # EL8, EL9 and EL10
+The whole API is one class and one exception:
+
+```php
+namespace PlutoBook;
+
+final class Document
+{
+    public function __construct(string $pageSize = 'A4', string $orientation = 'portrait', string $margins = '15mm');
+    public function loadHtml(string $html, ?string $baseUrl = null, string $css = '', ?string $documentRoot = null, array $allowedHosts = []): void;
+    public function toPdf(): string;
+    public function writeToFile(string $path): void;
+    public function writeToStream($stream): void;  // an open, writable PHP stream
+    /** @return list<array{url: string, reason: string, detail: string}> */
+    public function getResourceErrors(): array;
+}
+
+class Exception extends \RuntimeException {}
 ```
 
-| Package | For | Installs |
-| --- | --- | --- |
-| `php8.4-plutobook_1.0.0-1_amd64.deb` | Debian and Ubuntu with the distribution's PHP or Ondřej Surý's | `/usr/lib/php/API/plutobook.so`, `/etc/php/8.4/mods-available/plutobook.ini`, enabled with `phpenmod` |
-| `php-plutobook-1.0.0-1.php84.el9.x86_64.rpm` | EL8, EL9 and EL10 with PHP in `/usr` (AppStream or Remi's modular streams), with one file per EL release | `/usr/lib64/php/modules/plutobook.so`, `/etc/php.d/40-plutobook.ini` |
+### Page size and margins
 
-Packages require the matching PHP API (`phpapi-API`, `php(api) = API-64`), the
-system font configuration with DejaVu fonts, and libcurl 7.68.0 or newer, or
-GnuTLS and Nettle for the EL8 packages, which carry the `el8` module. Restart
-PHP-FPM after installing.
-
-### Pre-built Linux modules
-
-The PIE binaries and the packages carry a self-contained `plutobook.so` for
-Linux x86_64, one per PHP minor version. Both variants use the system's glibc
-and differ in where libcurl comes from:
-
-- **`linux`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
-  20.04 and later) with the system libcurl 7.68.0 or newer. PIE installs it, and the
-  deb packages and the EL9 and EL10 rpm packages carry it.
-- **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
-  than the binding supports. A `linux` module still loads and renders there, but
-  skips remote assets as `network-error`. The `el8` module contains libcurl
-  8.23.0 (HTTP and HTTPS only) and uses the system GnuTLS. PIE cannot tell EL8
-  from other glibc systems, so the `el8` modules ship in the EL8 packages only.
-
-Each module contains PlutoBook, Cairo, pixman, HarfBuzz, FreeType, Fontconfig,
-libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, with fixes for two upstream
-memory leaks (see [Limitations](#limitations)). [THIRD_PARTY.md](THIRD_PARTY.md)
-lists their licenses. ICU's data is trimmed to the parts PlutoBook uses, and text
-in 25 languages and ten scripts renders the same as with the full data. The module
-exports only `get_module`, so its copies of these libraries stay separate from the
-ones gd, imagick or intl load. It needs only glibc, the GCC 8 `libstdc++` and
-`libgcc_s`, and libcurl or GnuTLS from the system.
-
-The bundled Fontconfig reads the system configuration in `/etc/fonts` and needs a
-font package such as DejaVu. Its cache format (version 12) differs from the
-system Fontconfig's, so it scans the font directories once per PHP process unless
-it can write its own cache, for example in `/var/cache/fontconfig` as root or in
-the PHP user's home directory. The scan took 15 ms with 38 fonts and 120 ms with
-263 fonts on AlmaLinux 10. A patch keeps it from printing "No writable cache
-directories" for every font directory; `FC_DEBUG=16` shows the message again.
-
-### Windows with PIE
-
-PIE selects a ZIP by PHP minor version, thread safety, compiler and architecture.
-For example, `php_plutobook-1.0.0-8.4-nts-vs17-x86_64.zip` is for 64-bit
-non-thread-safe PHP 8.4 built with Visual Studio 2022. PIE installs
-`php_plutobook.dll` in PHP's extension directory, `libplutobook-0.dll` next to
-`php.exe`, and the fonts, configuration and license files under
-`extras\plutobook`. The binding includes libcurl and zlib and uses Windows
-Schannel for HTTPS.
-
-An explicit `FONTCONFIG_FILE` or `FONTCONFIG_PATH` takes precedence over the
-packaged fonts. If the PHP directory contains characters outside the Windows
-ANSI code page and its volume has 8.3 filenames disabled, copy `fonts.conf`
-and its adjacent `fonts` directory to a representable path and point
-`FONTCONFIG_PATH` there.
-
-### Building against system libraries
-
-Distribution packages and PIE installs build the extension with the usual
-`phpize`, `./configure --with-plutobook` and `make`. `configure` reads its
-dependencies through `pkg-config`:
-
-- **PlutoBook 0.20.0** (`plutobook.pc`). It builds with Meson. This project uses
-  `-Ddefault_library=shared -Dturbojpeg=enabled -Dwebp=enabled`. Use `-Dcurl=disabled`:
-  the binding fetches remote assets itself and never uses PlutoBook's HTTP client.
-- **libcurl 7.68.0 or newer with HTTP and HTTPS** (`libcurl.pc`, for example
-  `libcurl4-openssl-dev` or `libcurl-devel`). `configure` stops with an error if
-  libcurl is missing or lacks either protocol. If the libcurl loaded at run time is
-  older than 7.68.0, remote assets are skipped as `network-error` and `--ri
-  plutobook` shows the version found.
-
-Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
-`configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
-System Cairo 1.18 and PlutoBook 0.20.0 leak memory on every render unless they
-carry the fixes described under [Limitations](#limitations).
-
-### Verifying downloads
-
-Every release carries `SHA256SUMS`, signed as `SHA256SUMS.asc`, and the rpm files
-are signed. The key is `php-plutobook-signing-key.asc` in each release and
-[`tools/keys/release-signing-key.asc`](tools/keys/release-signing-key.asc), with
-the fingerprint `D80D 92A4 A247 D7F6 BF32 4E1A BFE0 F7EC 429C 222F`.
-
-```sh
-gpg --import php-plutobook-signing-key.asc
-gpg --verify SHA256SUMS.asc SHA256SUMS
-sha256sum --ignore-missing -c SHA256SUMS
-
-sudo rpm --import php-plutobook-signing-key.asc   # EL: rpm -K then reports "signatures OK"
-rpm -K php-plutobook-1.0.0-1.php84.el9.x86_64.rpm
+```php
+$document = new PlutoBook\Document(
+    pageSize: 'Letter',        // A3, A4 (default), A5, B4, B5, Letter, Legal or Ledger
+    orientation: 'landscape',  // portrait (default) or landscape
+    margins: '20mm 15mm',      // like CSS margin: 1 to 4 lengths, default 15mm
+);
 ```
 
-## Document API
+Margins take lengths in `pt`, `mm`, `cm`, `in`, `px` or `pc`, and `0` works
+without a unit. An `@page` rule in your CSS can change all of these. PlutoBook uses
+the size and margins of the first page for the whole document.
 
-- `__construct(string $pageSize = "A4", string $orientation = "portrait", string $margins = "15mm")`
-  accepts A3, A4, A5, B4, B5, Letter, Legal and Ledger, with portrait or landscape
-  orientation. Margins use CSS shorthand (top, right, bottom, left) with one to
-  four nonnegative lengths in pt, mm, cm, in, px or pc. Unitless zero is valid.
-  A stylesheet's `@page` rules can change the initial page settings.
-- `loadHtml(string $html, ?string $baseUrl = null, string $css = "", ?string $documentRoot = null, array $allowedHosts = []): void`
-  loads UTF-8 HTML and an optional override stylesheet. Calling it again replaces
-  the document content. Ordinary imperfect markup follows the renderer's HTML parser.
-  `$baseUrl` and `$documentRoot` select local asset directories, as described in
-  [Assets and fonts](#assets-and-fonts). `$baseUrl` can also be an `http(s)://` page
-  URL, and `$allowedHosts` opts the document into [remote assets](#remote-assets).
-  PlutoBook ranks `$css` above the document's own styles. Its normal declarations
-  override `<style>` elements, linked stylesheets and inline `style` attributes,
-  whatever their specificity. Document `!important` declarations still beat normal
-  `$css` declarations. Mark a `$css` declaration `!important` to override those as
-  well. This differs from the CSS specification's user stylesheet rules, so
-  `tests/unit/css-precedence.phpt` pins the PlutoBook 0.20.0 behavior.
-- `toPdf(): string`, `writeToStream($stream): void`, and `writeToFile(string $path): void`
-  render through native PDF write callbacks. Stream output starts at the current
-  position. The caller retains the stream and handles final flushing or closing.
-  The destination is borrowed exclusively while writing. File output uses normal
-  create/truncate semantics, like gd, Imagick and `DOMDocument::save()`. An I/O
-  failure or time limit can leave partial output. To replace a file only after a
-  complete render, write to a temporary path in the same directory and `rename()` it.
-- Rendering CPU time counts toward `max_execution_time`. PHP cannot interrupt native
-  code, so the binding checks the time limit whenever the renderer fetches an asset
-  or writes output. Once the limit passes, it stops rendering and raises PHP's
-  normal `Maximum execution time` fatal error, and shutdown functions still run.
-  Layout before the first output byte cannot be interrupted. If layout outlasts the
-  limit plus `hard_timeout`, PHP terminates the process. Raise `set_time_limit()`
-  for very large documents, or render them in a queue worker.
-- `getResourceErrors(): array` lists the resources skipped by the most recent
-  `loadHtml()` and any rendering since, as `['url' => string, 'reason' => string]`
-  entries. See [Assets and fonts](#assets-and-fonts) for the reasons.
-- Invalid options raise `ValueError` or `TypeError`. Rendering and output failures
-  raise `PlutoBook\Exception`, a `RuntimeException`. Its message names the cause
-  when the binding or renderer knows it, for example
-  `Unable to write the PDF output: the destination stream did not accept the data`.
-  Exceptions from a PHP stream wrapper propagate to the caller.
-  Documents support neither cloning nor serialization.
+### HTML and CSS
 
-### Assets and fonts
+`loadHtml()` takes UTF-8 HTML and, optionally, extra CSS. Calling it again
+replaces the content. PlutoBook's HTML parser copes with ordinary imperfect markup.
 
-By default documents can use inline `data:` resources. To load local CSS, images
-or fonts, pass an existing directory as an absolute `file:///` URI with a trailing
-slash. Percent-encode individual path components where needed.
+```php
+$document->loadHtml($html, css: <<<'CSS'
+    @page {
+        @bottom-center { content: "Page " counter(page); }
+    }
+    h1 { break-before: page; }
+    CSS);
+```
+
+The CSS you pass this way beats the document's own `<style>` tags, linked
+stylesheets and `style` attributes, however specific their selectors are. The one
+exception is the document's `!important` rules, which still beat yours unless you
+mark yours `!important` too. This is PlutoBook's behavior, and browsers treat user
+stylesheets differently.
+
+### Saving the PDF
+
+```php
+$pdf = $document->toPdf();               // as a string
+$document->writeToFile('/tmp/out.pdf');  // to a file, replacing it
+$document->writeToStream($stream);       // to an open PHP stream
+```
+
+`writeToStream()` starts at the stream's current position and leaves the stream
+open. Flush or close it yourself, and don't use it elsewhere until the call
+returns.
+
+If rendering fails halfway, the file or stream can hold a partial PDF. To never
+serve a broken file, write to a temporary file in the same folder and `rename()`
+it when the write succeeds.
+
+### Images, stylesheets and fonts
+
+By default a document can only use resources embedded as `data:` URLs. To use
+files from disk, tell `loadHtml()` which folder they are in, as an absolute
+`file:///` URL that ends with `/`.
+
+For relative paths such as `logo.svg` or `css/print.css`, pass the folder as
+`baseUrl`. Percent-encode each part of the path:
 
 ```php
 $assets = realpath(__DIR__ . '/assets');
@@ -221,13 +166,10 @@ $baseUrl = 'file://' . implode('/', array_map('rawurlencode', explode('/', $asse
 $document->loadHtml('<img src="logo.svg"><p>Statement</p>', baseUrl: $baseUrl);
 ```
 
-With only `baseUrl`, `file:` URLs are filesystem paths, so `/assets/logo.svg`
-means `/assets/logo.svg` on the server and is refused. Templates written for a
-website usually use such root-relative URLs. For those, pass the site's public
-directory as `documentRoot`, again a `file:///` URI ending in `/`. That directory
-then acts as `/`, as on a web server. `baseUrl` becomes optional and must point to
-a directory inside it. It defaults to the document root and determines what
-relative URLs such as `logo.svg` resolve against.
+Templates written for a website often use paths that start with `/`, such as
+`/assets/logo.svg`. For those, pass the site's public folder as `documentRoot`. It
+then acts as `/`, the way it does on a web server. `baseUrl` becomes optional: it
+must be a folder inside the document root and sets where relative paths start.
 
 ```php
 $document->loadHtml(
@@ -237,81 +179,17 @@ $document->loadHtml(
 );
 ```
 
-In this mode every `file:` URL in the document is relative to the document root,
-including absolute ones such as `file:///srv/shop/…`. `..` cannot climb above it.
-The same template therefore resolves the same way whether it is rendered from
-these local files or from the live site. `getResourceErrors()` reports the URLs as
-the document saw them, for example `file:///assets/missing.png`.
+With a document root, every `file:` URL stays inside it, even
+`file:///srv/shop/…`, and `..` can't climb out. The same template renders the same
+way from your local files as from the live site.
 
-The asset loader confines regular files to the selected tree and checks PHP's
-`open_basedir`. On Linux, symlinks inside the tree work, while those leading out of it are
-refused. After those checks it reopens the resolved path one component at a time
-without following symlinks, so a path swapped for a symlink in the meantime is
-refused. It does not need `/proc`, so it also works in an FPM `chroot`. Devices,
-FIFOs and sockets are inspected but never opened for reading. Network requests
-are disabled unless the document lists `allowedHosts`. Missing or denied resources are
-omitted while surrounding content renders. The renderer also uses Fontconfig for
-installed fonts.
+On Windows, use a drive URL such as `file:///C:/invoices/assets/`.
 
-On Windows, use a local drive URL such as `file:///C:/invoices/assets/`.
-The loader pins the directory by handle and refuses reparse points (including
-junctions and symlinks), UNC paths, device names and alternate data streams.
+PlutoBook also uses the fonts installed on the system, through Fontconfig.
 
-Each skipped resource appears once in `getResourceErrors()` as
-`['url' => …, 'reason' => …, 'detail' => …]`. `reason` is one of the stable codes
-below, and `detail` is human-readable text such as `HTTP 404`. Fonts and
-background images can be fetched during rendering, so check the list after
-`toPdf()` or a write method. To make missing assets fatal, throw when the list is
-not empty.
+### Images and fonts from the web
 
-| Reason | Meaning |
-| --- | --- |
-| `network-disabled` | An `http:` or `https:` URL in a document without `allowedHosts`. |
-| `unsupported-scheme` | Any other non-`file:` URL. |
-| `no-base-url` | A local file without a `baseUrl` or `documentRoot` directory. |
-| `invalid-url` | A malformed URL, such as a `file:` URL with an encoded NUL byte. |
-| `missing` | The file does not exist. |
-| `open-basedir` | PHP's `open_basedir` blocks the file. |
-| `outside-base` | The resolved file lies outside the `documentRoot`, or the `baseUrl` directory without one. |
-| `verification-failed` | A directory or the file changed between the checks and the read. |
-| `not-regular-file` | A directory, FIFO, socket or device. |
-| `empty` | A zero-byte file or response body. |
-| `too-large` | The file or response exceeds `plutobook.max_asset_size`. |
-| `permission-denied` | The PHP process cannot read the file. |
-| `read-error` | Reading or handing the data to the renderer failed. |
-| `host-not-allowed` | The host, or a redirect target's host, is not in `allowedHosts`. |
-| `blocked-address` | The host resolved to an internal address. |
-| `http-error` | The final response status is not 2xx. |
-| `redirect-error` | Too many redirects, a redirect from https to http, or to another scheme. |
-| `tls-error` | The TLS handshake or certificate verification failed. |
-| `timeout` | The request exceeded `plutobook.http_timeout`, or PHP's time limit passed. |
-| `network-error` | DNS, connection and other transfer failures, or a libcurl older than 7.68.0. |
-
-PlutoBook 0.20.0 also prints one `WARNING:` line per skipped resource to the
-process's stderr. The binding cannot suppress that output. The line names the
-reason and URL, for example
-`WARNING: Asset skipped, outside the asset directory: file:///…`.
-
-Asset bytes are native allocations outside `memory_limit`. The
-`plutobook.max_asset_size` setting caps each local file and each remote response
-body after decompression. It defaults to `32M`,
-accepts PHP size shorthand (`K`, `M`, `G`) and can be changed with `ini_set()`.
-Larger files are skipped like missing resources. `0` removes the binding's cap.
-Values must stay at or below 2147483647 bytes, the renderer's own limit, so `2G`
-is rejected. Invalid values raise a warning and keep the previous setting.
-The current value applies to every fetch, including fonts and images that
-PlutoBook loads while it renders.
-
-`plutobook.max_total_asset_size` caps the bytes one document loads across all of
-its local and remote assets, including repeated fetches of the same file under
-different URLs. It defaults to `128M`, accepts the same shorthand and `0` removes
-it. Assets that would cross the cap are skipped as `too-large` with the detail
-`plutobook.max_total_asset_size reached`. Each `loadHtml()` starts a new budget.
-
-### Remote assets
-
-Documents load nothing over the network unless `loadHtml()` lists the hosts
-they may contact. An empty list, the default, keeps the network off.
+Nothing is downloaded unless you list the hosts a document may contact:
 
 ```php
 $document->loadHtml(
@@ -321,66 +199,169 @@ $document->loadHtml(
 );
 ```
 
-- **Host patterns.** Each entry is an exact host name such as `shop.example`, a
-  `*.example.com` pattern that matches its subdomains (but not `example.com`
-  itself), a bracketed IPv6 literal such as `[2001:db8::1]`, or `*` for any host.
-  Use the ASCII (punycode) form of international domain names.
-- **Remote `baseUrl`.** An `http://` or `https://` page URL resolves relative and
-  root-relative references the way a browser does. It grants no access to local
-  files, and it cannot be combined with `documentRoot`. A local `baseUrl` or
-  `documentRoot` can still be combined with `allowedHosts` for absolute
-  `https://` assets.
-- **Request policy.** Only `http` and `https` are used. Redirects are followed by
-  the binding, which checks every hop against `allowedHosts` and refuses
-  redirects from https to http or to other schemes. TLS certificates and host
-  names are always verified, with TLS 1.2 or newer. Proxy environment variables
-  such as `http_proxy` are ignored, and no cookies are stored. Each document
-  reuses its own connections across assets.
-- **Internal addresses.** Connections to loopback, private (10/8, 172.16/12,
-  192.168/16, 100.64/10, fc00::/7), link-local (169.254/16 including cloud
-  metadata, fe80::/10), multicast, reserved and unspecified addresses are
-  refused. The check uses the address actually connected to, so DNS names
-  cannot bypass it. An operator can allow them with
-  `plutobook.allow_private_addresses`.
-- **Dependencies.** The binding uses the libcurl C library directly. PHP's `curl`
-  extension is not needed.
+An entry is a host name, a `*.example.com` pattern for its subdomains (not
+`example.com` itself), a bracketed IPv6 address such as `[2001:db8::1]`, or `*`
+for any host. Write international domain names in their ASCII (punycode) form.
 
-| Setting | Default | Changeable | Meaning |
-| --- | --- | --- | --- |
-| `plutobook.http_timeout` | `10` | `ini_set()` | Seconds per asset, including redirects (1–3600). |
-| `plutobook.http_document_timeout` | `30` | `ini_set()` | Network seconds per document across all its assets (0 = no cap, up to 86400). |
-| `plutobook.http_max_redirects` | `5` | `ini_set()` | Redirects followed per asset (0–20). |
-| `plutobook.http_ca_file` | empty | `ini_set()` | CA bundle to trust instead of libcurl's default. |
-| `plutobook.allow_private_addresses` | `Off` | php.ini, `.user.ini`, FPM pool | Allow internal addresses. |
+A web `baseUrl` resolves relative paths the way a browser does and gives no access
+to local files, so it can't be combined with `documentRoot`. You can still use
+`allowedHosts` with a local `baseUrl` or `documentRoot` for absolute `https://`
+links. The extension downloads with libcurl directly and doesn't need PHP's `curl`
+extension. [Security](#security) lists what it refuses to fetch.
 
-Network time is wall-clock time, which PHP's `max_execution_time` does not count
-on Linux. Each asset gets at most `http_timeout` seconds. All remote assets of a
-document share `http_document_timeout` seconds, counted from `loadHtml()` and
-including fonts and images fetched while rendering. Once that budget is spent,
-the remaining remote assets are skipped as `timeout` with the detail
-`plutobook.http_document_timeout reached`.
+### Missing images and fonts
+
+If an image, stylesheet or font can't be loaded, it is left out and the rest of
+the page still renders. `getResourceErrors()` tells you what was skipped:
+
+```php
+$document->writeToFile('invoice.pdf');
+
+foreach ($document->getResourceErrors() as $error) {
+    // ['url' => 'https://cdn.example/logo.png', 'reason' => 'http-error', 'detail' => 'HTTP 404']
+    error_log("{$error['url']}: {$error['reason']} ({$error['detail']})");
+}
+```
+
+Check the list after rendering, because fonts and background images load while
+the PDF is written. It covers the latest `loadHtml()` and any rendering since,
+with each resource listed once. To treat missing assets as an error, throw when
+the list isn't empty. With a document root, URLs are reported as the document sees
+them, for example `file:///assets/missing.png` rather than the path on the server.
+
+<details>
+<summary>All reasons</summary>
+
+| Reason | Meaning |
+| --- | --- |
+| `network-disabled` | An `http:` or `https:` URL in a document without `allowedHosts`. |
+| `unsupported-scheme` | Any other non-`file:` URL. |
+| `no-base-url` | A local file without a `baseUrl` or `documentRoot`. |
+| `invalid-url` | A malformed URL, such as a `file:` URL with an encoded NUL byte. |
+| `missing` | The file does not exist. |
+| `open-basedir` | PHP's `open_basedir` blocks the file. |
+| `outside-base` | The file is outside the `documentRoot`, or outside the `baseUrl` folder when there is no document root. |
+| `verification-failed` | A folder or the file changed between the checks and the read. |
+| `not-regular-file` | A folder, FIFO, socket or device. |
+| `empty` | A zero-byte file or response. |
+| `too-large` | The file or response is larger than `plutobook.max_asset_size`, or would take the document past `plutobook.max_total_asset_size`. |
+| `permission-denied` | PHP can't read the file. |
+| `read-error` | Reading the file, or handing it to PlutoBook, failed. |
+| `host-not-allowed` | The host, or a redirect's host, isn't in `allowedHosts`. |
+| `blocked-address` | The host resolved to an internal address. |
+| `http-error` | The final response status isn't 2xx. |
+| `redirect-error` | Too many redirects, or a redirect from https to http or to another scheme. |
+| `tls-error` | The TLS handshake or certificate check failed. |
+| `timeout` | The download took longer than `plutobook.http_timeout`, the document used up `plutobook.http_document_timeout`, or PHP's time limit passed. |
+| `network-error` | DNS, connection and other transfer failures, or a libcurl older than 7.68.0. |
+
+</details>
+
+PlutoBook also prints a `WARNING:` line to stderr for each skipped resource, such as
+`WARNING: Asset skipped, outside the asset directory: file:///…`. The extension
+can't turn this off.
+
+### Errors
+
+- Invalid arguments, such as an unknown page size, throw `ValueError` or `TypeError`.
+- Rendering and writing failures throw `PlutoBook\Exception`, a
+  `RuntimeException`. Its message says what went wrong when that is known, for
+  example `Unable to write the PDF output: the destination stream did not accept the data`.
+- Exceptions thrown by a PHP stream wrapper reach your code unchanged.
+- Documents can't be cloned or serialized.
+
+### Time limits
+
+Rendering counts toward `max_execution_time`. PHP can't stop native code midway,
+so the extension checks the limit each time PlutoBook loads a resource or writes
+part of the PDF. Once the limit has passed, rendering stops with PHP's usual
+`Maximum execution time` error, and shutdown functions still run.
+
+The layout step before the first page is written can't be stopped this way. If it
+runs past the limit plus `hard_timeout`, PHP ends the process. For very large
+documents, raise the limit with `set_time_limit()` or render them in a queue worker.
+
+## Configuration
+
+All settings can go in `php.ini`. The last one can't be changed with `ini_set()`;
+it belongs in `php.ini`, `.user.ini` or an FPM pool.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `plutobook.max_asset_size` | `32M` | Largest single file or download, after decompression. |
+| `plutobook.max_total_asset_size` | `128M` | Most bytes one document may load in total. |
+| `plutobook.http_timeout` | `10` | Seconds per download, redirects included (1–3600). |
+| `plutobook.http_document_timeout` | `30` | Seconds of network time per document (up to 86400). |
+| `plutobook.http_max_redirects` | `5` | Redirects followed per download (0–20). |
+| `plutobook.http_ca_file` | empty | CA bundle to trust instead of libcurl's default. |
+| `plutobook.allow_private_addresses` | `Off` | Allow downloads from internal addresses. |
+
+- **Sizes** accept `K`, `M` and `G`, and `0` removes the limit.
+  `plutobook.max_asset_size` can be at most 2147483647 bytes, PlutoBook's own
+  limit, so `2G` is one byte too many.
+- **Invalid values** raise a warning and keep the previous setting.
+- **Downloaded and loaded files** use memory outside `memory_limit`, which is why
+  the size limits exist. Each `loadHtml()` starts a new total. Files that would go
+  over it are skipped as `too-large` with the detail
+  `plutobook.max_total_asset_size reached`.
+- **Network time** is real time, which `max_execution_time` doesn't count on Linux.
+  The document's budget starts at `loadHtml()` and includes fonts and images
+  fetched while rendering. `0` turns it off. When it runs out, the remaining
+  downloads are skipped as `timeout` with the detail
+  `plutobook.http_document_timeout reached`.
+- **Changes** made with `ini_set()` apply to every later load, including the ones
+  that happen while rendering.
+
+## Security
+
+Templates often contain user data, so the extension is strict by default.
+
+**Local files**
+
+- Files are only read from the `baseUrl` or `documentRoot` folder and its
+  subfolders, and PHP's `open_basedir` is respected.
+- On Linux, symlinks within the folder work, and symlinks leading out of it are
+  refused. A path swapped for a symlink after the checks is refused too. None of
+  this needs `/proc`, so it works in an FPM `chroot`.
+- On Windows, the folder is pinned while in use, and junctions, symlinks, UNC
+  paths, device names and alternate data streams are refused.
+- Devices, FIFOs and sockets are never read.
+
+**Downloads**
+
+- Only `http` and `https` are used, and only for hosts in `allowedHosts`.
+- Every redirect is checked against `allowedHosts`. Redirects from https to http,
+  or to other schemes, are refused.
+- TLS 1.2 or newer is required, and certificates and host names are always verified.
+- Proxy variables such as `http_proxy` are ignored, and no cookies are kept. Each
+  document reuses its own connections.
+- Internal addresses are refused: loopback, private networks (10/8, 172.16/12,
+  192.168/16, 100.64/10, fc00::/7), link-local addresses (169.254/16, including
+  cloud metadata, and fe80::/10), multicast, reserved and unspecified addresses.
+  The check uses the address actually connected to, so DNS tricks don't get
+  around it. An administrator can allow them with `plutobook.allow_private_addresses`.
 
 ## Limitations
 
-JavaScript and CSS Grid are roadmap items in the pinned renderer and do not work
-in PlutoBook 0.20.0.
-[PlutoBook 0.20.0 feature overview](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md)
-
-Cairo 1.18 leaks PDF font options, and PlutoBook 0.20.0 passes a variation
-string even for fonts with no variation axes. With the upstream libraries, the
-process working set grew by about 19 KiB per invoice over 800 renders. The Linux
-portable modules and Windows packages carry both fixes, and resident memory stays
-flat over repeated renders. For installations using affected system libraries,
-recycle FPM workers with `pm.max_requests`.
-[Cairo #1000](https://gitlab.freedesktop.org/cairo/cairo/-/issues/1000)
-· [PlutoBook #84](https://github.com/plutoprint/plutobook/issues/84)
+- **No JavaScript and no CSS Grid.** Both are on
+  [PlutoBook's roadmap](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md#roadmap).
+- **One page size per document.** Only the first page's size and margins are used,
+  and `@page :first` is the only page selector that works reliably.
+- **Memory with older system libraries.** Cairo 1.18 and PlutoBook 0.20.0 leak
+  memory on every render
+  ([Cairo #1000](https://gitlab.freedesktop.org/cairo/cairo/-/issues/1000),
+  [PlutoBook #84](https://github.com/plutoprint/plutobook/issues/84)), about
+  19 KiB per invoice. The ready-made Linux and Windows builds include the fixes. If
+  you compiled against unpatched system libraries, restart FPM workers regularly
+  with `pm.max_requests`.
 
 ## Contributing
 
-Building from a checkout, the test suites, the binary and package builds and the
-release process are described in [CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) covers building from a checkout, the tests, the
+binary and package builds, and the release process.
 
 ## License
 
-The binding uses Apache-2.0. The separately linked PlutoBook library uses MPL-2.0.
-[License](LICENSE) · [Third-party notices](THIRD_PARTY.md)
+The extension is licensed under Apache-2.0. PlutoBook, which it links to, is
+licensed under MPL-2.0. See [LICENSE](LICENSE) and
+[THIRD_PARTY.md](THIRD_PARTY.md).

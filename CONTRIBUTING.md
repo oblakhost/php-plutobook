@@ -157,16 +157,19 @@ case for a confirmed bug when existing coverage would miss it.
 Build the pinned PlutoBook under
 `.local/plutobook/0.20.0/` and run `scripts/unit-coverage 8.2.36`. It creates
 a fresh instrumented extension build, applies the C format and analysis checks,
-runs only the unit PHPTs and writes HTML and JSON reports to `artifacts/coverage/`.
-The gate rejects missing execution data, an empty denominator or less than 85%.
+runs only the unit PHPTs and writes HTML, JSON and Cobertura XML reports to
+`artifacts/coverage/`. The gate rejects missing execution data, an empty
+denominator or less than 85%. CI uploads the Cobertura report to Codecov with the
+organization's `CODECOV_TOKEN`. `codecov.yml` maps the build copy's `src/` paths
+back to `ext/src/` and keeps Codecov's own checks informational.
 
 ## Binaries and packages
 
 ### Portable Linux modules
 
 Binary releases and packages use a self-contained `plutobook.so` per PHP minor
-version for Linux x86_64. The README describes the `linux` and `el8` variants
-for users. Build them with Podman or Docker:
+version for Linux x86_64. [INSTALL.md](INSTALL.md#whats-in-the-linux-build)
+describes the `linux` and `el8` variants for users. Build them with Podman or Docker:
 
 ```sh
 scripts/build-portable            # every pinned PHP release
