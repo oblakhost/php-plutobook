@@ -147,6 +147,20 @@ returns.
 Open files in binary mode. A file opened with `t` in its mode, such as `wt`, is
 refused, because Windows would change the line endings inside the PDF.
 
+Write filters, added with `stream_filter_append()` or a `php://filter` URL, hide
+failed writes. PHP only reports what the first filter took in, and when the stream
+behind the filter refuses data, PHP drops it without an error. A filter can also
+hold back its last bytes until you close the stream. When you need to know the
+whole PDF arrived, write to a stream without filters, which throws when data is
+refused, or change the PDF yourself and check what `fwrite()` returns:
+
+```php
+$data = base64_encode($document->toPdf());
+if (fwrite($stream, $data) !== strlen($data)) {
+    throw new RuntimeException('The PDF was not written completely');
+}
+```
+
 If rendering fails halfway, the file or stream can hold a partial PDF. To never
 serve a broken file, write to a temporary file in the same folder and `rename()`
 it when the write succeeds.
