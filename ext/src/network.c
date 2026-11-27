@@ -41,6 +41,10 @@ typedef struct {
 // then stay off: the module still renders, and failing startup would stop PHP itself.
 static bool php_plutobook_curl_supported;
 static char php_plutobook_curl_unsupported[64];
+// Built from curl_version_info() rather than curl_version(): the latter also asks OpenLDAP
+// for its version, and libldap then sets up global state, including a host name lookup,
+// that it never frees. Every phpinfo() would pay for that lookup.
+static char php_plutobook_curl_description[192];
 // CURLOPT_NOSIGNAL is always set, since libcurl's SIGALRM timeouts are unsafe in PHP. Only an
 // asynchronous resolver (threaded or c-ares) then lets the timeouts stop a DNS lookup.
 static bool php_plutobook_async_dns;
@@ -55,6 +59,10 @@ bool php_plutobook_network_startup(void)
 		         "libcurl %s is older than 7.68.0", curl->version);
 		return true;
 	}
+	snprintf(php_plutobook_curl_description, sizeof(php_plutobook_curl_description),
+	         "libcurl/%s%s%s%s%s", curl->version, curl->ssl_version ? " " : "",
+	         curl->ssl_version ? curl->ssl_version : "", curl->libz_version ? " zlib/" : "",
+	         curl->libz_version ? curl->libz_version : "");
 	return curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK;
 }
 
@@ -67,7 +75,8 @@ void php_plutobook_network_shutdown(void)
 
 const char *php_plutobook_network_version(void)
 {
-	return php_plutobook_curl_supported ? curl_version() : php_plutobook_curl_unsupported;
+	return php_plutobook_curl_supported ? php_plutobook_curl_description
+	                                    : php_plutobook_curl_unsupported;
 }
 
 const char *php_plutobook_network_dns(void)
