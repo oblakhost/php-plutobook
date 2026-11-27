@@ -128,6 +128,7 @@ plutobook_resource_data_t *php_plutobook_fetch_asset(void *closure, const char *
 bool php_plutobook_network_startup(void);
 void php_plutobook_network_shutdown(void);
 const char *php_plutobook_network_version(void);
+const char *php_plutobook_network_dns(void);
 void php_plutobook_network_release(php_plutobook_document *doc);
 bool php_plutobook_is_remote_url(const zend_string *url);
 bool php_plutobook_check_remote_base(zend_string *base, uint32_t arg);

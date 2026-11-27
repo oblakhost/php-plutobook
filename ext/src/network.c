@@ -41,11 +41,15 @@ typedef struct {
 // then stay off: the module still renders, and failing startup would stop PHP itself.
 static bool php_plutobook_curl_supported;
 static char php_plutobook_curl_unsupported[64];
+// CURLOPT_NOSIGNAL is always set, since libcurl's SIGALRM timeouts are unsafe in PHP. Only an
+// asynchronous resolver (threaded or c-ares) then lets the timeouts stop a DNS lookup.
+static bool php_plutobook_async_dns;
 
 bool php_plutobook_network_startup(void)
 {
 	const curl_version_info_data *curl = curl_version_info(CURLVERSION_NOW);
 	php_plutobook_curl_supported = curl->version_num >= 0x074400;
+	php_plutobook_async_dns = (curl->features & CURL_VERSION_ASYNCHDNS) != 0;
 	if (!php_plutobook_curl_supported) {
 		snprintf(php_plutobook_curl_unsupported, sizeof(php_plutobook_curl_unsupported),
 		         "libcurl %s is older than 7.68.0", curl->version);
@@ -64,6 +68,16 @@ void php_plutobook_network_shutdown(void)
 const char *php_plutobook_network_version(void)
 {
 	return php_plutobook_curl_supported ? curl_version() : php_plutobook_curl_unsupported;
+}
+
+const char *php_plutobook_network_dns(void)
+{
+	if (!php_plutobook_curl_supported) {
+		return "not used (libcurl is older than 7.68.0)";
+	}
+	return php_plutobook_async_dns
+	           ? "bounded by the download timeouts"
+	           : "not bounded by the download timeouts (libcurl resolves host names synchronously)";
 }
 
 void php_plutobook_network_release(php_plutobook_document *doc)
@@ -524,6 +538,15 @@ plutobook_resource_data_t *php_plutobook_fetch_remote(php_plutobook_document *do
 		CURLcode result = curl_easy_perform(doc->http);
 		if (result != CURLE_OK) {
 			*status = php_plutobook_transfer_error(result, &download, error, detail, detail_size);
+			curl_off_t lookup_us = 0;
+			if (*status == PHP_PLUTOBOOK_ASSET_TIMEOUT && !php_plutobook_async_dns &&
+			    curl_easy_getinfo(doc->http, CURLINFO_NAMELOOKUP_TIME_T, &lookup_us) == CURLE_OK &&
+			    lookup_us / 1000 >= remaining) {
+				snprintf(detail, detail_size,
+				         "the DNS lookup took %" CURL_FORMAT_CURL_OFF_T
+				         " ms, and this libcurl cannot stop lookups early",
+				         lookup_us / 1000);
+			}
 			break;
 		}
 		long code = 0;

@@ -599,6 +599,7 @@ PHP_MINFO_FUNCTION(plutobook)
 	php_info_print_table_row(2, "Extension version", PHP_PLUTOBOOK_VERSION);
 	php_info_print_table_row(2, "Rendering library", plutobook_version_string());
 	php_info_print_table_row(2, "HTTP client", php_plutobook_network_version());
+	php_info_print_table_row(2, "DNS lookups", php_plutobook_network_dns());
 	php_info_print_table_end();
 	DISPLAY_INI_ENTRIES();
 }

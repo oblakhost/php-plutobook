@@ -312,6 +312,11 @@ it belongs in `php.ini`, `.user.ini` or an FPM pool.
   fetched while rendering. `0` turns it off. When it runs out, the remaining
   downloads are skipped as `timeout` with the detail
   `plutobook.http_document_timeout reached`.
+- **DNS lookups** count toward both timeouts only when libcurl can look up names
+  in the background, as most libcurl builds can. `php --ri plutobook` shows
+  `DNS lookups => bounded by the download timeouts` when it can. Otherwise a slow
+  DNS server can hold a download past its timeout, and the `timeout` error's
+  detail says how long the lookup took.
 - **Changes** made with `ini_set()` apply to every later load, including the ones
   that happen while rendering.
 
