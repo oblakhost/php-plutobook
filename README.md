@@ -3,8 +3,9 @@
 # PlutoBook for PHP
 
 [![PHP 8.2–8.6](https://img.shields.io/badge/PHP-8.2%E2%80%938.6-777BB4?logo=php&logoColor=white)](composer.json)
-[![Platforms: Linux NTS and Windows x64](https://img.shields.io/badge/platform-Linux%20NTS%20%7C%20Windows%20x64-444)](#verification-and-distribution)
+[![Platforms: Linux NTS and Windows x64](https://img.shields.io/badge/platform-Linux%20NTS%20%7C%20Windows%20x64-444)](#installation)
 [![PlutoBook 0.20.0](https://img.shields.io/badge/PlutoBook-0.20.0-29688A)](#building-against-system-libraries)
+[![Packagist: oblakhost/ext-plutobook](https://img.shields.io/packagist/v/oblakhost/ext-plutobook?label=PIE&logo=packagist&logoColor=white)](https://packagist.org/packages/oblakhost/ext-plutobook)
 
 [![CI: PHPT, CLI and FPM](https://img.shields.io/badge/CI-PHPT%20%2F%20CLI%20%2F%20FPM-2088FF?logo=githubactions&logoColor=white)](.github/workflows/toolchains.yml)
 [![Unit line coverage gate: 85%](https://img.shields.io/badge/unit%20coverage%20gate-85%25-444)](CONTRIBUTING.md#testing)
@@ -30,95 +31,87 @@ $document->writeToFile(__DIR__ . '/42.pdf');  // Local filesystem path
 // With an already open writable PHP stream: $document->writeToStream($stream);
 ```
 
-## Build and run locally
+## Installation
 
-From the repository root:
-
-```sh
-scripts/build-php 8.2.36
-scripts/build-plutobook
-scripts/build-extension 8.2.36
-.local/php/8.2.36/nts/bin/php -n \
-  -d "extension=$PWD/build/extension/8.2.36/nts/modules/plutobook.so" --ri plutobook
-scripts/test-extension 8.2.36
-scripts/test-invoice 8.2.36
-```
-
-The last command leaves a two-page A4 invoice, a one-page landscape Letter quotation,
-page images, extracted text and memory measurements in the printed `artifacts/invoice/` directory. It exercises
-both CLI and a real FastCGI POST. The synthetic fixture includes 32 line items,
-a local SVG logo, Serbian Latin and Cyrillic text, and pinned DejaVu fonts.
-
-Build prerequisites include Bash, GCC/G++ with C++20, Make, Autoconf, pkg-config,
-CMake, Ninja, Python 3, curl, tar, flock, jq, and development headers for
-OpenSSL, zlib, libxml2, iconv, Cairo (PDF/PNG/FreeType/Fontconfig), FreeType,
-Fontconfig, HarfBuzz and ICU. The renderer script supplies pinned private builds
-of missing Expat, TurboJPEG and WebP dependencies. It also builds libcurl, HTTP
-and HTTPS only, when the host has no libcurl development files with HTTPS.
-PDF inspection uses Poppler.
-QA uses Python venv/pip and unzip or 7z for Composer.
-
-All PHP builds, binaries, headers and ini files live under this checkout.
-Builds use existing non-PHP host tools and libraries read-only. Each extension
-build uses its own absolute `phpize`, `php-config` and CLI. Build configuration,
-compiler details and private FPM request evidence are under `artifacts/`.
-[Source and tool pins](tools/sources.sha256)
-
-### Native Windows build over SSH
-
-From this checkout, run the full build or select a shorter check:
+Install the extension with [PIE](https://github.com/php/pie), configured for the
+PHP installation that should load it:
 
 ```sh
-scripts/test-winbuild 8.4.28
-scripts/test-winbuild 8.4.28 phpt tests/unit/windows-junctions.phpt
-scripts/test-winbuild 8.4.28 php --ri plutobook
+pie install oblakhost/ext-plutobook
+php --ri plutobook
 ```
 
-The command connects to the existing `winbuild` OpenSSH alias, including for file
-transfer. It sends the working copies of the extension and tests, so local edits
-can be tested before a commit. The host needs x64 Visual Studio 2022 C++ Build
-Tools with a Windows SDK, CMake, Ninja, Python 3.11+, and Windows tar. The
-Linux workstation uses Bash, Git, OpenSSH, GNU tar, Python 3, Poppler and a
-container engine. It cross-compiles the patched renderer once and reuses it
-across the native PHP builds.
-
-The first run builds a private x64 NTS PHP CLI and caches it with the pinned
-dependencies under `%USERPROFILE%\pdf-ext`. Each invocation builds a fresh DLL
-against the matching PHP headers. The full run exercises the Windows CLI and
-PHPT suite, renders the invoice on Windows, and inspects the resulting PDF on
-the workstation. The printed directory under `artifacts/winbuild/8.4.28/`
-contains the DLL, build log, PDFs and the portable development ZIP. A verified
-copy of the ZIP also lives in `%USERPROFILE%\pdf-ext\artifacts` on the host. Extract the
-ZIP on Windows x64 with the Microsoft Visual C++ v14 x64 runtime installed.
-From the extracted folder, use the included launcher:
-
-```bat
-php-plutobook.cmd --ri plutobook
-php-plutobook.cmd your-script.php
-```
-
-PHP-FPM and the native line-coverage gate run on Linux.
+PIE installs a pre-built module when the release has one for that PHP build and
+otherwise compiles the release's source archive. Every
+[GitHub release](https://github.com/oblakhost/php-plutobook/releases) carries the
+source archive, the Linux and Windows PIE binaries, deb and rpm packages, the
+source of the MPL-covered code in the binaries and signed checksums.
 
 ### Linux with PIE
 
-`pie install oblakhost/ext-plutobook` installs the release's pre-built module on
-x86_64 and aarch64 Linux with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6 and
-libcurl 7.68.0 or newer: `php_plutobook-1.1.0_php8.4-x86_64-linux-glibc-nts.zip` or
-`…-arm64-linux-glibc-nts.zip` for PHP 8.4.
+PIE installs the release's pre-built module on x86_64 Linux with glibc 2.28 or
+newer, non-thread-safe PHP 8.2 to 8.6 and libcurl 7.68.0 or newer:
+`php_plutobook-1.0.0_php8.4-x86_64-linux-glibc-nts.zip` for PHP 8.4.
 Fontconfig and a font package such as DejaVu must be installed. Elsewhere, for
 example with thread-safe PHP, musl or configure options, PIE builds the release's
 source archive, which needs PlutoBook 0.20.0 and libcurl development files (see
 [Building against system libraries](#building-against-system-libraries)). On EL8,
 whose libcurl is too old for remote assets, install the EL8 rpm instead.
 
-### Windows release packages
+### deb and rpm packages
 
-With [PIE](https://github.com/php/pie) configured for the target PHP installation, run
+Download the package for your PHP minor version from the
+[latest release](https://github.com/oblakhost/php-plutobook/releases/latest) and
+install it with the system package manager:
 
 ```sh
-pie install oblakhost/ext-plutobook
-php --ri plutobook
+sudo apt install ./php8.4-plutobook_1.0.0-1_amd64.deb            # Debian and Ubuntu
+sudo dnf install ./php-plutobook-1.0.0-1.php84.el9.x86_64.rpm    # EL8, EL9 and EL10
 ```
+
+| Package | For | Installs |
+| --- | --- | --- |
+| `php8.4-plutobook_1.0.0-1_amd64.deb` | Debian and Ubuntu with the distribution's PHP or Ondřej Surý's | `/usr/lib/php/API/plutobook.so`, `/etc/php/8.4/mods-available/plutobook.ini`, enabled with `phpenmod` |
+| `php-plutobook-1.0.0-1.php84.el9.x86_64.rpm` | EL8, EL9 and EL10 with PHP in `/usr` (AppStream or Remi's modular streams), with one file per EL release | `/usr/lib64/php/modules/plutobook.so`, `/etc/php.d/40-plutobook.ini` |
+
+Packages require the matching PHP API (`phpapi-API`, `php(api) = API-64`), the
+system font configuration with DejaVu fonts, and libcurl 7.68.0 or newer, or
+GnuTLS and Nettle for the EL8 packages, which carry the `el8` module. Restart
+PHP-FPM after installing.
+
+### Pre-built Linux modules
+
+The PIE binaries and the packages carry a self-contained `plutobook.so` for
+Linux x86_64, one per PHP minor version. Both variants use the system's glibc
+and differ in where libcurl comes from:
+
+- **`linux`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
+  20.04 and later) with the system libcurl 7.68.0 or newer. PIE installs it, and the
+  deb packages and the EL9 and EL10 rpm packages carry it.
+- **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
+  than the binding supports. A `linux` module still loads and renders there, but
+  skips remote assets as `network-error`. The `el8` module contains libcurl
+  8.23.0 (HTTP and HTTPS only) and uses the system GnuTLS. PIE cannot tell EL8
+  from other glibc systems, so the `el8` modules ship in the EL8 packages only.
+
+Each module contains PlutoBook, Cairo, pixman, HarfBuzz, FreeType, Fontconfig,
+libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, with fixes for two upstream
+memory leaks (see [Limitations](#limitations)). [THIRD_PARTY.md](THIRD_PARTY.md)
+lists their licenses. ICU's data is trimmed to the parts PlutoBook uses, and text
+in 25 languages and ten scripts renders the same as with the full data. The module
+exports only `get_module`, so its copies of these libraries stay separate from the
+ones gd, imagick or intl load. It needs only glibc, the GCC 8 `libstdc++` and
+`libgcc_s`, and libcurl or GnuTLS from the system.
+
+The bundled Fontconfig reads the system configuration in `/etc/fonts` and needs a
+font package such as DejaVu. Its cache format (version 12) differs from the
+system Fontconfig's, so it scans the font directories once per PHP process unless
+it can write its own cache, for example in `/var/cache/fontconfig` as root or in
+the PHP user's home directory. The scan took 15 ms with 38 fonts and 120 ms with
+263 fonts on AlmaLinux 10. A patch keeps it from printing "No writable cache
+directories" for every font directory; `FC_DEBUG=16` shows the message again.
+
+### Windows with PIE
 
 PIE selects a ZIP by PHP minor version, thread safety, compiler and architecture.
 For example, `php_plutobook-1.0.0-8.4-nts-vs17-x86_64.zip` is for 64-bit
@@ -134,12 +127,40 @@ ANSI code page and its volume has 8.3 filenames disabled, copy `fonts.conf`
 and its adjacent `fonts` directory to a representable path and point
 `FONTCONFIG_PATH` there.
 
-To build a release ZIP from the current checkout and test its installed layout on
-`winbuild`, pass the extension version and thread mode explicitly.
+### Building against system libraries
+
+Distribution packages and PIE installs build the extension with the usual
+`phpize`, `./configure --with-plutobook` and `make`. `configure` reads its
+dependencies through `pkg-config`:
+
+- **PlutoBook 0.20.0** (`plutobook.pc`). It builds with Meson. This project uses
+  `-Ddefault_library=shared -Dturbojpeg=enabled -Dwebp=enabled`. Use `-Dcurl=disabled`:
+  the binding fetches remote assets itself and never uses PlutoBook's HTTP client.
+- **libcurl 7.68.0 or newer with HTTP and HTTPS** (`libcurl.pc`, for example
+  `libcurl4-openssl-dev` or `libcurl-devel`). `configure` stops with an error if
+  libcurl is missing or lacks either protocol. If the libcurl loaded at run time is
+  older than 7.68.0, remote assets are skipped as `network-error` and `--ri
+  plutobook` shows the version found.
+
+Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
+`configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
+System Cairo 1.18 and PlutoBook 0.20.0 leak memory on every render unless they
+carry the fixes described under [Limitations](#limitations).
+
+### Verifying downloads
+
+Every release carries `SHA256SUMS`, signed as `SHA256SUMS.asc`, and the rpm files
+are signed. The key is `php-plutobook-signing-key.asc` in each release and
+[`tools/keys/release-signing-key.asc`](tools/keys/release-signing-key.asc), with
+the fingerprint `D80D 92A4 A247 D7F6 BF32 4E1A BFE0 F7EC 429C 222F`.
 
 ```sh
-scripts/test-winbuild 8.4.28 release 1.0.0 nts
-scripts/test-winbuild 8.4.28 release 1.0.0 ts
+gpg --import php-plutobook-signing-key.asc
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+
+sudo rpm --import php-plutobook-signing-key.asc   # EL: rpm -K then reports "signatures OK"
+rpm -K php-plutobook-1.0.0-1.php84.el9.x86_64.rpm
 ```
 
 ## Document API
@@ -230,8 +251,7 @@ refused. It does not need `/proc`, so it also works in an FPM `chroot`. Devices,
 FIFOs and sockets are inspected but never opened for reading. Network requests
 are disabled unless the document lists `allowedHosts`. Missing or denied resources are
 omitted while surrounding content renders. The renderer also uses Fontconfig for
-installed fonts. The fixture scripts select a private Fontconfig file for
-repeatable output.
+installed fonts.
 
 On Windows, use a local drive URL such as `file:///C:/invoices/assets/`.
 The loader pins the directory by handle and refuses reparse points (including
@@ -340,159 +360,27 @@ including fonts and images fetched while rendering. Once that budget is spent,
 the remaining remote assets are skipped as `timeout` with the detail
 `plutobook.http_document_timeout reached`.
 
-### Building against system libraries
+## Limitations
 
-Distribution packages and PIE installs build the extension with the usual
-`phpize`, `./configure --with-plutobook` and `make`. `configure` reads its
-dependencies through `pkg-config`:
-
-- **PlutoBook 0.20.0** (`plutobook.pc`). It builds with Meson. This project uses
-  `-Ddefault_library=shared -Dturbojpeg=enabled -Dwebp=enabled`. Use `-Dcurl=disabled`:
-  the binding fetches remote assets itself and never uses PlutoBook's HTTP client.
-- **libcurl 7.68.0 or newer with HTTP and HTTPS** (`libcurl.pc`, for example
-  `libcurl4-openssl-dev` or `libcurl-devel`). `configure` stops with an error if
-  libcurl is missing or lacks either protocol. If the libcurl loaded at run time is
-  older than 7.68.0, remote assets are skipped as `network-error` and `--ri
-  plutobook` shows the version found.
-
-Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
-`configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
-`scripts/build-plutobook` passes `LDFLAGS` on to the renderer's link step.
-
-### Portable Linux modules
-
-Binary releases and packages use a self-contained `plutobook.so` per PHP minor
-version for Linux x86_64 and aarch64, built on a host of that architecture. Build them
-with Podman or Docker:
-
-```sh
-scripts/build-portable            # every pinned PHP release
-scripts/build-portable 8.3.37     # one release; --skip-tests skips the PHPT and invoice suites
-```
-
-The build runs offline in an AlmaLinux 8 container with GCC 14 and tests each
-module there with the PHPT and invoice suites. It writes
-`build/portable/dist/VARIANT/phpX.Y/plutobook.so` (about 12 MB), a separate
-`plutobook.so.debug`, and the license notices of the bundled
-libraries in `build/portable/dist/licenses/`. Logs are in
-`build/portable/root/artifacts/portable/`. Both variants use the system's glibc
-and differ in where libcurl comes from:
-
-- **`linux`** runs on glibc 2.28 or newer (EL9 and later, Debian 10 and later, Ubuntu
-  20.04 and later) with the system libcurl 7.68.0 or newer. It compiles against the
-  libcurl 7.68.0 headers and its tests run against that release.
-- **`el8`** is for AlmaLinux, Rocky and CloudLinux 8, whose libcurl 7.61.1 is older
-  than the binding supports. A `linux` module still loads and renders there, but
-  skips remote assets as `network-error`. The `el8` module contains libcurl
-  8.23.0 (HTTP and HTTPS only) and uses the system GnuTLS, since libcurl 8.18 and
-  later need OpenSSL 3.
-
-`PLUTOBOOK_RELEASE_VERSION=1.2.0` embeds the release version and writes PIE's
-pre-packaged binaries to `build/portable/release/`, one per PHP minor version:
-`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` (`arm64` on aarch64) holds the
-`linux` module as
-`plutobook.so`, with `LICENSE`, `THIRD_PARTY.md` and the bundled libraries'
-`licenses/`. PIE names Linux binaries after the C library they need. PIE cannot tell
-EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only.
-`php_plutobook-1.2.0-mpl-sources.tar.xz` holds the source of the MPL-covered code
-in the binaries, as [THIRD_PARTY.md](THIRD_PARTY.md) describes.
-
-Each module contains PlutoBook with the static font variations fix (plutobook#84),
-Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,
-Fontconfig, libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, built from
-PlutoBook's Meson wraps. `tools/portable/wraps` replaces Cairo's 2024 libpng, zlib
-and pixman wraps with current releases. Versions are in `tools/sources.sha256`.
-With both fixes, resident memory stays flat over the invoice suite's 80 renders.
-ICU's data shrinks from 31.6 MB to 4.3 MB: PlutoBook needs only the break
-iterators with their dictionaries, emoji properties and locale fallback data
-(`tools/portable/icu-keep.txt`). Text in 25 languages and ten scripts renders the
-same as with the full data.
-
-The module exports only `get_module`, so its copies of these libraries stay
-separate from the ones gd, imagick or intl load. It needs only glibc, the GCC 8
-`libstdc++` and `libgcc_s`, and libcurl or GnuTLS from the system. The build checks
-that, together with symbol versions, full RELRO, a non-executable stack and the
-absence of run paths.
-
-The bundled Fontconfig reads the system configuration in `/etc/fonts` and needs a
-font package such as DejaVu. Its cache format (version 12) differs from the
-system Fontconfig's, so it scans the font directories once per PHP process unless
-it can write its own cache, for example in `/var/cache/fontconfig` as root or in
-the PHP user's home directory. The scan took 15 ms with 38 fonts and 120 ms with
-263 fonts on AlmaLinux 10. A patch keeps it from printing "No writable cache
-directories" for every font directory; `FC_DEBUG=16` shows the message again.
-
-### deb and rpm packages
-
-`scripts/build-packages` wraps the portable modules with nFPM, one package per PHP
-minor version, in `build/portable/packages/`. It takes the same
-`PLUTOBOOK_RELEASE_VERSION` as the modules and refuses modules built without it.
-
-| Package | For | Installs |
-| --- | --- | --- |
-| `php8.3-plutobook_1.2.0-1_amd64.deb` | Debian and Ubuntu with the distribution's PHP or Ondřej Surý's | `/usr/lib/php/API/plutobook.so`, `/etc/php/8.3/mods-available/plutobook.ini`, enabled with `phpenmod` |
-| `php-plutobook-1.2.0-1.php83.el9.x86_64.rpm` | EL8, EL9 and EL10 with PHP in `/usr` (AppStream or Remi's modular streams) | `/usr/lib64/php/modules/plutobook.so`, `/etc/php.d/40-plutobook.ini` |
-
-On aarch64 the packages are `…_arm64.deb` and `….aarch64.rpm`. The release workflow
-builds and tests both architectures natively, on `ubuntu-24.04` and `ubuntu-24.04-arm`.
-
-Packages require the matching PHP API (`phpapi-API`, `php(api) = API-64`), the
-system font configuration with DejaVu fonts, and libcurl 7.68.0 or newer, or
-GnuTLS and Nettle for the EL8 packages, which carry the `el8` module. Restart
-PHP-FPM after installing. `PLUTOBOOK_PACKAGE_MAINTAINER` sets the Maintainer
-field. `scripts/test-packages` installs each package in a clean container with
-that distribution's PHP, or Surý's or Remi's where the distribution lacks the
-version, renders a page, removes the package and checks that nothing is left.
-
-### Verifying downloads
-
-Every release carries `SHA256SUMS`, signed as `SHA256SUMS.asc`, and the rpm files
-are signed. The key is `php-plutobook-signing-key.asc` in each release and
-[`tools/keys/release-signing-key.asc`](tools/keys/release-signing-key.asc), with
-the fingerprint `D80D 92A4 A247 D7F6 BF32 4E1A BFE0 F7EC 429C 222F`.
-
-```sh
-gpg --import php-plutobook-signing-key.asc
-gpg --verify SHA256SUMS.asc SHA256SUMS
-sha256sum --ignore-missing -c SHA256SUMS
-
-sudo rpm --import php-plutobook-signing-key.asc   # EL: rpm -K then reports "signatures OK"
-rpm -K php-plutobook-1.2.0-1.php83.el9.x86_64.rpm
-```
-
-## Verification and distribution
-
-`scripts/build-php` and `scripts/verify-php` with no arguments build and check
-every pinned NTS runtime. Pass its exact PHP version to the extension build
-and test commands. `debug`, `ubsan` and `asan` are separate build flavors.
-`debug` also fails the extension build on compiler warnings. `asan` builds PHP
-and the extension with AddressSanitizer, using GCC when its runtime is installed
-and Clang otherwise. Its unit run fails on any LeakSanitizer report outside
-`tools/asan/lsan-suppressions.txt`.
-`scripts/bootstrap-qa`, `scripts/check-php` and `scripts/unit-coverage` run the
-PHP and native quality checks, including the 85% unit line-coverage gate.
-[Development conventions](CONTRIBUTING.md)
+JavaScript and CSS Grid are roadmap items in the pinned renderer and do not work
+in PlutoBook 0.20.0.
+[PlutoBook 0.20.0 feature overview](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md)
 
 Cairo 1.18 leaks PDF font options, and PlutoBook 0.20.0 passes a variation
-string even for fonts with no variation axes. With the upstream Windows
-renderer, the process working set grew by about 19 KiB per invoice over 800
-renders. The Linux portable modules and Windows packages carry both fixes.
-`tools/asan/render-loop.c` reproduces the native leak independently of PHP.
-For installations using affected system libraries, recycle FPM workers with
-`pm.max_requests`.
+string even for fonts with no variation axes. With the upstream libraries, the
+process working set grew by about 19 KiB per invoice over 800 renders. The Linux
+portable modules and Windows packages carry both fixes, and resident memory stays
+flat over repeated renders. For installations using affected system libraries,
+recycle FPM workers with `pm.max_requests`.
 [Cairo #1000](https://gitlab.freedesktop.org/cairo/cairo/-/issues/1000)
 · [PlutoBook #84](https://github.com/plutoprint/plutobook/issues/84)
 
-The Linux NTS and Windows NTS and TS matrices cover synthetic invoices. JavaScript
-and CSS Grid are roadmap items in the pinned renderer. Comparison with the
-original WHMCS/Gotenberg output awaits the real fixture.
-[PlutoBook 0.20.0 feature overview](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md)
+## Contributing
 
-The PIE package name is `oblakhost/ext-plutobook`. After the CI matrix passes,
-each release gets the source archive, the Linux and Windows PIE binaries, the deb
-and rpm packages, the MPL sources and signed checksums. Packagist lists the
-package once the repository is registered there. PECL directs new extensions to PIE.
-[PECL publishing policy](https://pecl.php.net/account-request.php)
+Building from a checkout, the test suites, the binary and package builds and the
+release process are described in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
 
 The binding uses Apache-2.0. The separately linked PlutoBook library uses MPL-2.0.
 [License](LICENSE) · [Third-party notices](THIRD_PARTY.md)
