@@ -1,7 +1,8 @@
 # Installing PlutoBook for PHP
 
-The commands below use version 1.0.0. Replace it with the version of the
-[latest release](https://github.com/oblakhost/php-plutobook/releases/latest).
+The commands below always download the
+[latest release](https://github.com/oblakhost/php-plutobook/releases/latest). In
+file names, `VERSION` stands for its version number.
 
 | Platform | Versions | PHP from | Use |
 | --- | --- | --- | --- |
@@ -38,9 +39,9 @@ PIE downloads a ready-made build when one matches your PHP:
 
 - **Linux:** x86_64 with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6, and
   libcurl 7.68.0 or newer. For PHP 8.4 that is
-  `php_plutobook-1.0.0_php8.4-x86_64-linux-glibc-nts.zip`.
+  `php_plutobook-VERSION_php8.4-x86_64-linux-glibc-nts.zip`.
 - **Windows:** x64 with PHP 8.2 to 8.6, thread-safe or not. For non-thread-safe
-  PHP 8.4 that is `php_plutobook-1.0.0-8.4-nts-vs17-x86_64.zip`.
+  PHP 8.4 that is `php_plutobook-VERSION-8.4-nts-vs17-x86_64.zip`.
 
 Anywhere else, for example with thread-safe PHP or musl on Linux, or when you pass
 configure options, PIE compiles the extension from the release's source archive.
@@ -57,27 +58,26 @@ own package, named `phpX.Y-plutobook`. It installs only next to the PHP it was
 built for, because it depends on that PHP's API version (`phpapi-API`, such as
 `phpapi-20240924` for PHP 8.4).
 
-1. Find your PHP version:
+1. Download and install the package for your PHP version:
 
    ```sh
-   php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION, PHP_EOL;'
+   php=$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')
+   version=$(basename "$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/oblakhost/php-plutobook/releases/latest)")
+   curl -fLO "https://github.com/oblakhost/php-plutobook/releases/download/$version/php$php-plutobook_$version-1_amd64.deb"
+   sudo apt install "./php$php-plutobook_$version-1_amd64.deb"
    ```
 
-2. Download and install the matching package, here for PHP 8.4:
+   The first line reads your PHP version, such as `8.4`, and the second finds the
+   latest release. If PHP's command line isn't installed, set `php=8.4` yourself.
 
-   ```sh
-   curl -LO https://github.com/oblakhost/php-plutobook/releases/download/1.0.0/php8.4-plutobook_1.0.0-1_amd64.deb
-   sudo apt install ./php8.4-plutobook_1.0.0-1_amd64.deb
-   ```
-
-   The package turns the extension on for PHP 8.4's CLI, FPM and Apache module
+   The package turns the extension on for that PHP's CLI, FPM and Apache module
    with `phpenmod`, and installs the system font configuration and the DejaVu
    fonts if they are missing.
 
-3. Restart PHP-FPM if you use it, and check:
+2. Restart PHP-FPM if you use it, and check:
 
    ```sh
-   sudo systemctl restart php8.4-fpm
+   sudo systemctl restart "php$php-fpm"
    php --ri plutobook
    ```
 
@@ -101,28 +101,29 @@ To remove it, run `sudo apt remove php8.4-plutobook`.
 
 Packages are available for versions 8, 9 and 10, with PHP installed in `/usr` from
 AppStream or from Remi's repository. Each PHP version and system version has its
-own package, named `php-plutobook-1.0.0-1.phpXY.elN.x86_64.rpm`. It installs only
+own package, named `php-plutobook-VERSION-1.phpXY.elN.x86_64.rpm`. It installs only
 next to the PHP it was built for, because it depends on that PHP's API version
 (`php(api) = API-64`, such as `php(api) = 20240924-64` for PHP 8.4).
 
-1. Find your system version and PHP version:
+1. Download the package for your system and PHP version, check its signature and
+   install it:
 
    ```sh
-   rpm -E %rhel                                                   # 8, 9 or 10
-   php -r 'echo PHP_MAJOR_VERSION, PHP_MINOR_VERSION, PHP_EOL;'   # 84 means PHP 8.4
+   el=$(rpm -E %rhel)
+   php=$(php -r 'echo PHP_MAJOR_VERSION, PHP_MINOR_VERSION;')
+   version=$(basename "$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/oblakhost/php-plutobook/releases/latest)")
+   rpm=php-plutobook-$version-1.php$php.el$el.x86_64.rpm
+   curl -fLO "https://github.com/oblakhost/php-plutobook/releases/download/$version/$rpm"
+   sudo rpm --import "https://github.com/oblakhost/php-plutobook/releases/download/$version/php-plutobook-signing-key.asc"
+   rpm -K "$rpm"   # reports "digests signatures OK"
+   sudo dnf install "./$rpm"
    ```
 
-2. Download the package, check its signature and install it, here for PHP 8.4 on
-   version 9:
+   The first three lines read your system version (8, 9 or 10), your PHP version
+   (such as `84` for PHP 8.4) and the latest release. If PHP's command line isn't
+   installed, set `php=84` yourself.
 
-   ```sh
-   curl -LO https://github.com/oblakhost/php-plutobook/releases/download/1.0.0/php-plutobook-1.0.0-1.php84.el9.x86_64.rpm
-   sudo rpm --import https://github.com/oblakhost/php-plutobook/releases/download/1.0.0/php-plutobook-signing-key.asc
-   rpm -K php-plutobook-1.0.0-1.php84.el9.x86_64.rpm   # reports "digests signatures OK"
-   sudo dnf install ./php-plutobook-1.0.0-1.php84.el9.x86_64.rpm
-   ```
-
-3. Restart PHP-FPM and check:
+2. Restart PHP-FPM and check:
 
    ```sh
    sudo systemctl restart php-fpm
@@ -215,7 +216,7 @@ stops it from printing "No writable cache directories" for every font folder; se
 
 Install with [PIE](#any-platform-pie). It picks the ZIP for your PHP version,
 thread safety, compiler and architecture. For example,
-`php_plutobook-1.0.0-8.4-nts-vs17-x86_64.zip` is for 64-bit non-thread-safe PHP 8.4
+`php_plutobook-VERSION-8.4-nts-vs17-x86_64.zip` is for 64-bit non-thread-safe PHP 8.4
 built with Visual Studio 2022.
 
 | File | Location |
@@ -268,7 +269,7 @@ gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 
 sudo rpm --import php-plutobook-signing-key.asc
-rpm -K php-plutobook-1.0.0-1.php84.el9.x86_64.rpm   # reports "digests signatures OK"
+rpm -K php-plutobook-*.rpm   # reports "digests signatures OK"
 ```
 
 ## Checking that it works
