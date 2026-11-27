@@ -1,0 +1,123 @@
+#!/bin/sh
+# Runs in a clean container (scripts/test-packages) with two cPanel packages under /pkg/
+# and cPanel's EasyApache 4 repository set up. Replaces cagefsctl and cPanel's restart
+# scripts with stubs that log each call, then checks when the packages' install and
+# removal scripts run them: once per install transaction, only CageFS on removal, and
+# never failing the package operation.
+set -eu
+quiet() { "$@" > /tmp/step.log 2>&1 || { cat /tmp/step.log; return 1; }; }
+fail() { echo "$block: $*"; exit 1; }
+# Runs a package operation that must succeed, keeping its output in /tmp/out.
+op() { "$@" > /tmp/out 2>&1 || { cat /tmp/out; fail "$* failed"; }; }
+
+set -- /pkg/*
+[ $# = 2 ] || { echo "expected two packages in /pkg"; exit 1; }
+pkg_a=$1 pkg_b=$2
+case $pkg_a in
+  *.deb)
+    export DEBIAN_FRONTEND=noninteractive
+    quiet apt-get -qq update
+    install() { apt-get -qq install -y --no-install-recommends "$@"; }
+    reinstall() { apt-get -qq install -y --reinstall --no-install-recommends "$@"; }
+    remove() { apt-get -qq remove -y "$@"; }
+    name_of() { dpkg-deb -f "$1" Package; }
+    installed() { [ "$(dpkg-query -W -f '${Status}' "$1" 2> /dev/null)" = "install ok installed" ]; }
+    # cPanel's Ubuntu ea-php needs libxml2 and tzdata without depending on them.
+    extra='libxml2 tzdata'
+    ;;
+  *.rpm)
+    # Not -q: dnf then hides what package scripts print.
+    install() { dnf -y install "$@"; }
+    reinstall() { dnf -y reinstall "$@"; }
+    remove() { dnf -y remove "$@"; }
+    name_of() { rpm -qp --qf '%{NAME}' "$1"; }
+    installed() { rpm -q "$1" > /dev/null 2>&1; }
+    extra=
+    ;;
+esac
+name_a=$(name_of "$pkg_a")
+name_b=$(name_of "$pkg_b")
+a=${name_a#oblak-ea-php}
+a=${a%-plutobook}
+b=${name_b#oblak-ea-php}
+b=${b%-plutobook}
+php_a=/opt/cpanel/ea-php$a/root/usr/bin/php
+php_b=/opt/cpanel/ea-php$b/root/usr/bin/php
+loads() { "$1" -m 2> /dev/null | grep -qx plutobook; }
+
+block=setup
+# shellcheck disable=SC2086 # extra is empty or one package name
+quiet install "ea-php$a-php-cli" "ea-php$b-php-cli" $extra
+# Each stub logs "<name> <arguments> modules=<installed plutobook.so files>".
+mkdir -p /usr/local/cpanel/scripts /etc/cagefs
+for stub in /usr/sbin/cagefsctl /usr/local/cpanel/scripts/restartsrv_apache_php_fpm \
+    /usr/local/cpanel/scripts/restartsrv_httpd; do
+  cat > "$stub" <<'SH'
+#!/bin/sh
+modules=$(ls /opt/cpanel/ea-php*/root/usr/lib64/php/modules/plutobook.so 2> /dev/null | wc -l)
+echo "${0##*/} $* modules=$modules" | tr -s ' ' >> /tmp/calls
+[ ! -e /tmp/stub-fail ]
+SH
+  chmod 755 "$stub"
+done
+echo /opt > /etc/cagefs/cagefs.mp
+: > /tmp/calls
+expect_calls() {
+  expected=$(printf '%s\n' "$@")
+  actual=$(cat /tmp/calls)
+  if [ "$expected" != "$actual" ]; then
+    printf 'expected calls:\n%s\nactual calls:\n%s\n' "$expected" "$actual"
+    fail "unexpected calls"
+  fi
+  : > /tmp/calls
+}
+refresh="cagefsctl --update --force-update"
+
+block='one refresh'
+op install "$pkg_a" "$pkg_b"
+expect_calls "$refresh modules=2" "restartsrv_apache_php_fpm modules=2" "restartsrv_httpd modules=2"
+loads "$php_a" && loads "$php_b" || fail "plutobook is not enabled"
+[ ! -e /run/oblak-ea-plutobook.refresh ] || fail "the refresh flag was left behind"
+
+block=reinstall
+op reinstall "$pkg_a"
+expect_calls "$refresh modules=2" "restartsrv_apache_php_fpm modules=2" "restartsrv_httpd modules=2"
+
+block=remove
+op remove "$name_a"
+expect_calls "$refresh modules=1"
+! loads "$php_a" || fail "plutobook is still enabled"
+! "$php_a" -m 2>&1 | grep -i warning || fail "PHP warns after removal"
+
+block='duplicate ini'
+dup=/opt/cpanel/ea-php$a/root/etc/php.d/80-plutobook.ini
+echo extension=plutobook.so > "$dup"
+op install "$pkg_a"
+grep -qF "PlutoBook: warning: $dup also loads plutobook; remove it" /tmp/out || { cat /tmp/out; fail "no warning"; }
+rm -f "$dup"
+: > /tmp/calls
+
+block='failing tools'
+touch /tmp/stub-fail
+op remove "$name_a"
+grep -qF "PlutoBook: warning: /usr/sbin/$refresh failed; run it by hand" /tmp/out || { cat /tmp/out; fail "no warning on removal"; }
+op install "$pkg_a"
+grep -qF "PlutoBook: warning: /usr/local/cpanel/scripts/restartsrv_httpd failed; run it by hand" /tmp/out ||
+  { cat /tmp/out; fail "no warning on install"; }
+loads "$php_a" || fail "plutobook is not enabled"
+rm -f /tmp/stub-fail
+: > /tmp/calls
+
+block='no mounts'
+echo '# none' > /etc/cagefs/cagefs.mp
+op reinstall "$pkg_a"
+expect_calls "restartsrv_apache_php_fpm modules=2" "restartsrv_httpd modules=2"
+
+block='removed with ea-php'
+echo /opt > /etc/cagefs/cagefs.mp
+op remove "ea-php$a-php-common"
+! installed "$name_a" || fail "$name_a is still installed"
+expect_calls "$refresh modules=1"
+loads "$php_b" || fail "plutobook is no longer enabled for ea-php$b"
+
+echo scripts OK
