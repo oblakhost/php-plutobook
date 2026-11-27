@@ -462,6 +462,12 @@ PHP_METHOD(PlutoBook_Document, writeToStream)
 		php_plutobook_fail("Expected a writable PHP stream");
 		RETURN_THROWS();
 	}
+	// PHP opens plain files with "t" in text mode on Windows, where the C runtime turns each
+	// LF in the binary PDF into CRLF. Refuse the flag everywhere so code behaves the same.
+	if (php_stream_is(out.stream, PHP_STREAM_IS_STDIO) && strchr(out.stream->mode, 't')) {
+		php_plutobook_fail("Expected a PHP stream opened in binary mode, without \"t\"");
+		RETURN_THROWS();
+	}
 	php_plutobook_render(doc, &out);
 }
 

@@ -144,6 +144,9 @@ $document->writeToStream($stream);       // to an open PHP stream
 open. Flush or close it yourself, and don't use it elsewhere until the call
 returns.
 
+Open files in binary mode. A file opened with `t` in its mode, such as `wt`, is
+refused, because Windows would change the line endings inside the PDF.
+
 If rendering fails halfway, the file or stream can hold a partial PDF. To never
 serve a broken file, write to a temporary file in the same folder and `rename()`
 it when the write succeeds.
