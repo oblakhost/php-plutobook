@@ -43,13 +43,11 @@ def check_names(directory, expected):
         sys.exit(f"{directory}: missing {sorted(expected - actual)}, unexpected {sorted(actual - expected)}")
 
 
-def collect(version):
-    linux = ROOT / "build/linux-release"
-    windows = ROOT / "build/windows-release"
-    releases = ROOT / "artifacts/releases"
+def linux_assets(version):
     expected = {f"php_plutobook-{version}-mpl-sources.tar.xz"}
     for php in php_versions():
         minor = php.rsplit(".", 1)[0]
+        nodot = minor.replace(".", "")
         # Each architecture as PIE, Debian and RPM name it.
         for pie, deb, rpm in (("x86_64", "amd64", "x86_64"), ("arm64", "arm64", "aarch64")):
             expected.update({
@@ -57,8 +55,19 @@ def collect(version):
                 f"php{minor}-plutobook_{version}-1_{deb}.deb",
             })
             for el in (8, 9, 10):
-                expected.add(f"php-plutobook-{version}-1.php{minor.replace('.', '')}.el{el}.{rpm}.rpm")
-    check_names(linux, expected)
+                expected.add(f"php-plutobook-{version}-1.php{nodot}.el{el}.{rpm}.rpm")
+        # cPanel EasyApache 4 packages; cPanel runs only on x86_64.
+        expected.add(f"oblak-ea-php{nodot}-plutobook_{version}-1_amd64.deb")
+        for el in (8, 9, 10):
+            expected.add(f"oblak-ea-php{nodot}-plutobook-{version}-1.el{el}.x86_64.rpm")
+    return expected
+
+
+def collect(version):
+    linux = ROOT / "build/linux-release"
+    windows = ROOT / "build/windows-release"
+    releases = ROOT / "artifacts/releases"
+    check_names(linux, linux_assets(version))
     assets = list(linux.iterdir())
 
     jobs = windows_jobs(version)
