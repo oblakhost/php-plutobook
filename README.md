@@ -102,8 +102,9 @@ PHP-FPM and the native line-coverage gate run on Linux.
 ### Linux with PIE
 
 `pie install oblakhost/ext-plutobook` installs the release's pre-built module on
-x86_64 Linux with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6 and libcurl
-7.68.0 or newer: `php_plutobook-1.0.0_php8.4-x86_64-linux-glibc-nts.zip` for PHP 8.4.
+x86_64 and aarch64 Linux with glibc 2.28 or newer, non-thread-safe PHP 8.2 to 8.6 and
+libcurl 7.68.0 or newer: `php_plutobook-1.1.0_php8.4-x86_64-linux-glibc-nts.zip` or
+`…-arm64-linux-glibc-nts.zip` for PHP 8.4.
 Fontconfig and a font package such as DejaVu must be installed. Elsewhere, for
 example with thread-safe PHP, musl or configure options, PIE builds the release's
 source archive, which needs PlutoBook 0.20.0 and libcurl development files (see
@@ -361,7 +362,8 @@ Standard `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply t
 ### Portable Linux modules
 
 Binary releases and packages use a self-contained `plutobook.so` per PHP minor
-version for Linux x86_64. Build them with Podman or Docker:
+version for Linux x86_64 and aarch64, built on a host of that architecture. Build them
+with Podman or Docker:
 
 ```sh
 scripts/build-portable            # every pinned PHP release
@@ -387,7 +389,8 @@ and differ in where libcurl comes from:
 
 `PLUTOBOOK_RELEASE_VERSION=1.2.0` embeds the release version and writes PIE's
 pre-packaged binaries to `build/portable/release/`, one per PHP minor version:
-`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` holds the `linux` module as
+`php_plutobook-1.2.0_php8.3-x86_64-linux-glibc-nts.zip` (`arm64` on aarch64) holds the
+`linux` module as
 `plutobook.so`, with `LICENSE`, `THIRD_PARTY.md` and the bundled libraries'
 `licenses/`. PIE names Linux binaries after the C library they need. PIE cannot tell
 EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only.
@@ -429,6 +432,9 @@ minor version, in `build/portable/packages/`. It takes the same
 | --- | --- | --- |
 | `php8.3-plutobook_1.2.0-1_amd64.deb` | Debian and Ubuntu with the distribution's PHP or Ondřej Surý's | `/usr/lib/php/API/plutobook.so`, `/etc/php/8.3/mods-available/plutobook.ini`, enabled with `phpenmod` |
 | `php-plutobook-1.2.0-1.php83.el9.x86_64.rpm` | EL8, EL9 and EL10 with PHP in `/usr` (AppStream or Remi's modular streams) | `/usr/lib64/php/modules/plutobook.so`, `/etc/php.d/40-plutobook.ini` |
+
+On aarch64 the packages are `…_arm64.deb` and `….aarch64.rpm`. The release workflow
+builds and tests both architectures natively, on `ubuntu-24.04` and `ubuntu-24.04-arm`.
 
 Packages require the matching PHP API (`phpapi-API`, `php(api) = API-64`), the
 system font configuration with DejaVu fonts, and libcurl 7.68.0 or newer, or

@@ -50,12 +50,14 @@ def collect(version):
     expected = {f"php_plutobook-{version}-mpl-sources.tar.xz"}
     for php in php_versions():
         minor = php.rsplit(".", 1)[0]
-        expected.update({
-            f"php_plutobook-{version}_php{minor}-x86_64-linux-glibc-nts.zip",
-            f"php{minor}-plutobook_{version}-1_amd64.deb",
-        })
-        for el in (8, 9, 10):
-            expected.add(f"php-plutobook-{version}-1.php{minor.replace('.', '')}.el{el}.x86_64.rpm")
+        # Each architecture as PIE, Debian and RPM name it.
+        for pie, deb, rpm in (("x86_64", "amd64", "x86_64"), ("arm64", "arm64", "aarch64")):
+            expected.update({
+                f"php_plutobook-{version}_php{minor}-{pie}-linux-glibc-nts.zip",
+                f"php{minor}-plutobook_{version}-1_{deb}.deb",
+            })
+            for el in (8, 9, 10):
+                expected.add(f"php-plutobook-{version}-1.php{minor.replace('.', '')}.el{el}.{rpm}.rpm")
     check_names(linux, expected)
     assets = list(linux.iterdir())
 

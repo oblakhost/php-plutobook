@@ -1,0 +1,81 @@
+name: Portable Linux build
+
+# Builds and tests the portable modules and the deb and rpm packages on x86_64 and aarch64,
+# each natively. The release workflow calls it with the release version. Pull requests that
+# touch the build, and manual runs, build with a placeholder version and release nothing.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Release version to embed in the modules and packages
+        required: true
+        type: string
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ext/**
+      - scripts/build-php
+      - scripts/build-portable
+      - scripts/build-packages
+      - scripts/stage-test-fonts
+      - scripts/test-packages
+      - tools/packages/**
+      - tools/patches/**
+      - tools/portable/**
+      - tools/sources.sha256
+      - .github/workflows/portable.yml
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    env:
+      PLUTOBOOK_RELEASE_VERSION: ${{ inputs.version || '0.0.0-ci' }}
+    steps:
+      - uses: actions/checkout@v4
+      # Build trees, PHP builds and package test images outgrow the runner's free disk.
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      # The static renderer stack takes the longest. tools/portable/build checks each part
+      # against its inputs and the architecture, so an older cache only saves what matches.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/sources
+            build/portable/root/.local/portable
+          key: portable-${{ matrix.arch }}-${{ hashFiles('tools/portable/**', 'tools/patches/**', 'tools/sources.sha256') }}
+          restore-keys: portable-${{ matrix.arch }}-
+      - run: scripts/build-portable
+      - run: scripts/build-packages
+      - run: scripts/test-packages
+      - name: Collect the release assets
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p build/release-assets
+          cp build/portable/release/* build/portable/packages/* build/release-assets/
+          # The MPL sources do not depend on the architecture; the x86_64 build supplies them.
+          if [ "$ARCH" != x86_64 ]; then rm -f build/release-assets/*-mpl-sources.tar.xz; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: build/release-assets/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-${{ matrix.arch }}-logs
+          path: |
+            build/portable/root/artifacts/
+            build/portable/package-tests/
