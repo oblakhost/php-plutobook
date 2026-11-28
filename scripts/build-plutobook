@@ -59,7 +59,18 @@ cmake_dependency() {
 }
 
 pkg-config --print-errors --exists cairo-fc cairo-ft cairo-png cairo-pdf freetype2 fontconfig harfbuzz icu-uc
+# The invoice suite asserts on extracted text, so this build carries the text clusters patch
+# like the release builds. A tree patched with another version of it is unpacked afresh.
+text_patch="$root/tools/patches/plutobook-0.20.0-text-clusters.patch"
+text_stamp="$build/source/.patched-text-clusters-$(sha256sum "$text_patch" | cut -c1-16)"
+if compgen -G "$build/source/.patched-text-clusters-*" > /dev/null && [[ ! -f $text_stamp ]]; then
+  rm -rf "$build/source"
+fi
 unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$build/source"
+if [[ ! -f $text_stamp ]]; then
+  patch -p0 -d "$build/source" < "$text_patch"
+  touch "$text_stamp"
+fi
 unpack meson-1.9.1.tar.gz "$build/meson-1.9.1"
 "$root/scripts/stage-test-fonts" "$prefix"
 mkdir -p "$licenses/plutobook"

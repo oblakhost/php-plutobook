@@ -42,7 +42,7 @@ of a deb and `/usr/share/licenses/php-plutobook/bundled/` of an rpm.
 
 | Component | Version | License | Changes |
 | --- | --- | --- | --- |
-| PlutoBook | 0.20.0 | MPL-2.0 | `tools/patches/plutobook-0.20.0-static-font-variations.patch` |
+| PlutoBook | 0.20.0 | MPL-2.0 | `tools/patches/plutobook-0.20.0-static-font-variations.patch`, `tools/patches/plutobook-0.20.0-text-clusters.patch` |
 | Cairo | 1.18.4 | MPL-1.1, chosen from LGPL-2.1 or MPL-1.1 | PlutoBook's `subprojects/packagefiles/cairo-fix-font-options-leaks.patch` |
 | pixman | 0.46.4 | MIT | |
 | HarfBuzz | 13.0.1 | MIT | |
@@ -81,7 +81,7 @@ DejaVu and Bitstream Vera notices and author credits under `licenses/dejavu/`.
 The libcurl and zlib notices are under `licenses/libcurl/` and `licenses/zlib/`.
 
 The release renderer is built from the pinned PlutoBook source with its Cairo
-font-options patch and our static-font-variations patch. The ZIP includes the
+font-options patch and our static-font-variations and text-clusters patches. The ZIP includes the
 renderer and dependency notices under `licenses/renderer/` and the applied
 patches under `patches/renderer/`. The corresponding
 MPL-covered source is in the release's `php_plutobook-VERSION-mpl-sources.tar.xz`.

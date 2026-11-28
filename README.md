@@ -383,6 +383,11 @@ Templates often contain user data, so the extension is strict by default.
   [PlutoBook's roadmap](https://github.com/plutoprint/plutobook/blob/v0.20.0/README.md#roadmap).
 - **One page size per document.** Only the first page's size and margins are used,
   and `@page :first` is the only page selector that works reliably.
+- **Copying and searching text.** Ligatures, tabular figures and localized letters
+  stay copyable and searchable in the ready-made builds. A build against
+  unpatched PlutoBook 0.20.0 loses their text; see
+  [Limitations](https://php.plutobook.dev/limitations#copying-and-searching-text)
+  for that and a few reader quirks.
 - **Memory with older system libraries.** Cairo 1.18 and PlutoBook 0.20.0 leak
   memory on every render
   ([Cairo #1000](https://gitlab.freedesktop.org/cairo/cairo/-/issues/1000),

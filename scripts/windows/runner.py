@@ -126,6 +126,7 @@ def stage_renderer(run, cache, deps):
             sys.exit("Patched renderer's C header differs from the pinned import library header")
         for patch in (
             "plutobook-0.20.0-static-font-variations.patch",
+            "plutobook-0.20.0-text-clusters.patch",
             "fontconfig-2.18.3-quiet-cache-dirs.patch",
             "fontconfig-2.18.3-keep-other-cache-versions.patch",
         ):

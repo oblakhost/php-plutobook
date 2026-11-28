@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage the pinned DejaVu test fonts under PREFIX, with PREFIX/etc/fonts/fonts.conf listing
 # only them. The tests set FONTCONFIG_FILE to it and find the fonts relative to it.
+# Inter is staged beside them for the text extraction test, which loads it with @font-face.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 prefix=${1:?Usage: stage-test-fonts PREFIX}
@@ -15,6 +16,18 @@ mkdir -p "$prefix/share/fonts/dejavu" "$prefix/etc/fonts" "$prefix/var/cache/fon
   "$prefix/share/licenses/dejavu"
 cp -f "$src/ttf"/DejaVuSans{,-Bold}.ttf "$prefix/share/fonts/dejavu/"
 cp -f "$src"/{LICENSE,AUTHORS} "$prefix/share/licenses/dejavu/"
+# Fontconfig must not list Inter: it would compete with DejaVu for unstyled text.
+mkdir -p "$prefix/share/fonts/inter" "$prefix/share/licenses/inter"
+python3 - "$("$root/scripts/fetch-source" Inter-4.1.zip)" "$prefix" <<'PY'
+from pathlib import Path
+import sys
+import zipfile
+
+prefix = Path(sys.argv[2])
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    (prefix / "share/fonts/inter/Inter-Regular.ttf").write_bytes(archive.read("extras/ttf/Inter-Regular.ttf"))
+    (prefix / "share/licenses/inter/LICENSE.txt").write_bytes(archive.read("LICENSE.txt"))
+PY
 # Fontconfig versions differ on relative cache directories. Anchor both paths.
 python3 - "$prefix" <<'PY'
 from pathlib import Path

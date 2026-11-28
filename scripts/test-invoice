@@ -9,7 +9,7 @@ module=${PLUTOBOOK_MODULE:-$root/build/extension/$version/$flavor/modules/plutob
 fonts=${PLUTOBOOK_TEST_FONTS:-$root/.local/plutobook/0.20.0}
 export FONTCONFIG_FILE="$fonts/etc/fonts/fonts.conf"
 for file in "$module" "$FONTCONFIG_FILE" "$fonts/share/fonts/dejavu/DejaVuSans.ttf" \
-  "$fonts/share/fonts/dejavu/DejaVuSans-Bold.ttf"; do
+  "$fonts/share/fonts/dejavu/DejaVuSans-Bold.ttf" "$fonts/share/fonts/inter/Inter-Regular.ttf"; do
   [[ -r "$file" ]] || { echo "Missing build prerequisite: $file" >&2; exit 1; }
 done
 log="$root/artifacts/invoice/$version/$flavor"
@@ -32,6 +32,9 @@ done
 pdftotext "$run/missing.pdf" "$run/missing.txt"
 grep -Fxq 'Pre nedostupne slike' "$run/missing.txt"
 grep -Fxq 'Posle nedostupne slike' "$run/missing.txt"
+# Tabular figures, ligatures and localized forms must stay copyable and searchable.
+"$php" "${php_args[@]}" "$root/tests/integration/text-extraction.php" "$fonts/share/fonts" "$run"
+python3 "$root/tests/integration/inspect-text.py" "$run/text.pdf"
 "$php" "${php_args[@]}" "$root/tests/integration/memory.php" "$run/invoice.html" > "$run/memory.json"
 
 source "$root/scripts/private-fpm.sh"

@@ -39,6 +39,11 @@ page images, extracted text and memory measurements in the printed `artifacts/in
 both CLI and a real FastCGI POST. The synthetic fixture includes 32 line items,
 a local SVG logo, Serbian Latin and Cyrillic text, and pinned DejaVu fonts.
 The fixture scripts select a private Fontconfig file for repeatable output.
+The same command renders `tests/fixtures/text/extraction.html` and checks that
+`pdftotext` returns tabular figures, ligatures, localized letters and
+right-to-left text as written. `scripts/build-plutobook` applies
+`tools/patches/plutobook-0.20.0-text-clusters.patch` for that; the release builds
+apply every PlutoBook patch in `tools/patches`.
 
 Build prerequisites include Bash, GCC/G++ with C++20, Make, Autoconf, pkg-config,
 CMake, Ninja, Python 3, curl, tar, flock, jq, and development headers for
@@ -196,8 +201,9 @@ EL8 from other glibc systems, so the `el8` modules ship in the EL8 packages only
 `php_plutobook-1.2.0-mpl-sources.tar.xz` holds the source of the MPL-covered code
 in the binaries, as [THIRD_PARTY.md](THIRD_PARTY.md) describes.
 
-Each module contains PlutoBook with the static font variations fix (plutobook#84),
-Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,
+Each module contains PlutoBook with the static font variations fix (plutobook#84)
+and the text clusters fix, which keeps the text of ligatures and tabular figures
+in the PDF, Cairo with the font options fix (cairo#1000), pixman, HarfBuzz, FreeType,
 Fontconfig, libpng, zlib, Expat, ICU, libjpeg-turbo and libwebp, built from
 PlutoBook's Meson wraps. `tools/portable/wraps` replaces Cairo's 2024 libpng, zlib
 and pixman wraps with current releases. Versions are in `tools/sources.sha256`.

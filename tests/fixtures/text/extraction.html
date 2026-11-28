@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="sr-Latn">
+<head>
+<meta charset="utf-8">
+<title>Text extraction</title>
+<style>
+/* Inter's tabular figures have no character map entry. Its default figures are proportional. */
+@font-face { font-family: "Inter"; src: url("inter/Inter-Regular.ttf"); }
+body { font: 12pt "DejaVu Sans"; }
+p { margin: 0 0 14pt; }
+.inter { font-family: "Inter"; }
+.narrow { width: 70pt; }
+</style>
+</head>
+<body>
+<!-- Every paragraph must come back from pdftotext as written, or as its data-expect. -->
+<p class="inter" style="font-variant-numeric: tabular-nums">Za uplatu 1.234.567,89 RSD 0123456789</p>
+<p class="inter" style="font-feature-settings: 'tnum'">Osnovica 9.876.543,21 EUR</p>
+<p class="inter">Proporcionalno 1.111,11 RSD</p>
+<!-- DejaVu Sans replaces ff, ffi, fi, ffl and fl with ligatures by default. -->
+<p>office traffic fine waffle flow</p>
+<p style="font-variant-ligatures: none">off official final</p>
+<!-- With a Serbian language tag DejaVu Sans draws a localized Cyrillic be. -->
+<p>Република Србија 1б</p>
+<p lang="en">Обавештење без локализације</p>
+<!-- Lines that wrap draw part of a shaped run each. -->
+<p class="narrow">affine suffix office baffle fiefdom offline</p>
+<!-- Right to left runs list their glyphs in visual order, and Arabic letters change with
+     their position in a word. -->
+<p dir="rtl" lang="he">שלום עולם</p>
+<p dir="rtl" lang="ar">مرحبا بالعالم</p>
+<!-- Characters that draw nothing leave no text behind, and a decomposed letter keeps both parts. -->
+<p data-expect="softhyphen zerowidth">soft&shy;hyphen zero&#x200B;width</p>
+<p>Cafe&#x301; Z&#x30C;ivkovic&#x301;</p>
+</body>
+</html>
