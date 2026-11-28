@@ -101,6 +101,9 @@ stack_plutobook() {
   unpack 8df624e11bd55d8e4f276ebf559335aa29fb926c "$src/source"
   # Font variations only for variable fonts (plutobook#84), which avoids the Cairo leak.
   patch -p0 -d "$src/source" < "$root/tools/patches/plutobook-0.20.0-static-font-variations.patch"
+  # Each glyph's characters go into the PDF, so that ligatures, tabular figures and
+  # localized forms stay copyable and searchable.
+  patch -p0 -d "$src/source" < "$root/tools/patches/plutobook-0.20.0-text-clusters.patch"
   # The wraps replace Cairo's outdated nested wraps. The Fontconfig wrap adds two patches
   # for a bundled copy, which cannot use the system's caches: a process without a writable
   # cache directory would print an error for every font directory, and writing its own
@@ -452,7 +455,8 @@ stack_mpl_sources() {
 MPL-covered source code in the php-plutobook portable modules
 
 plutobook-0.20.0/  PlutoBook 0.20.0 (MPL-2.0) as built, with
-                   patches/plutobook-0.20.0-static-font-variations.patch applied.
+                   patches/plutobook-0.20.0-static-font-variations.patch and
+                   patches/plutobook-0.20.0-text-clusters.patch applied.
                    subprojects/ holds the Meson wraps and patch files used for the
                    bundled libraries, including Cairo's font options fix in
                    subprojects/packagefiles/cairo-fix-font-options-leaks.patch.

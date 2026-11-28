@@ -10,6 +10,9 @@ eb50eaba0c2868737331cd67339b049134e714f77e2447d836c178fca7103a7f  https://codelo
 # Private renderer tool and invoice fonts
 4e076606f2afff7881d195574bddcd8d89286f35a17b4977a216f535dc0c74ac  https://files.pythonhosted.org/packages/48/d8/6c1dd1c740b7d5fd73a6ad67900a09e3dd6642013f58fa9e22ae6faaffc7/meson-1.9.1.tar.gz
 fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7  https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2
+# Inter 4.1 (OFL-1.1) for the text extraction test: its tabular figures have no character
+# map entry. The release publishes no checksum; this one matches Homebrew's font-inter cask.
+9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e  https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
 # Source fallbacks from PlutoBook's pinned subproject manifests
 3ad89b8588e6644bd4e49981480d48b21289eebbcd4f0a1a4afb1c29f99b6ab4  https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz
 ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022  https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz

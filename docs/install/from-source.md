@@ -17,8 +17,11 @@ and `make`. `configure` finds the libraries through `pkg-config`:
 The usual `CPPFLAGS`, `CFLAGS`, `LDFLAGS` and `PKG_CONFIG_PATH` variables apply to
 `configure`. Meson and CMake take `CFLAGS`, `CXXFLAGS` and `LDFLAGS` the same way.
 
-Unpatched Cairo 1.18 and PlutoBook 0.20.0 leak memory on every render. See
-[Limitations](../limitations.md).
+Unpatched Cairo 1.18 and PlutoBook 0.20.0 leak memory on every render, and
+unpatched PlutoBook loses the text of ligatures and tabular figures when it is
+copied or searched. The ready-made builds apply the patches in
+[`tools/patches`](https://github.com/oblakhost/php-plutobook/tree/master/tools/patches)
+to PlutoBook's source with `patch -p0`. See [Limitations](../limitations.md).
 
 To work on the extension itself, see
 [CONTRIBUTING.md](https://github.com/oblakhost/php-plutobook/blob/master/CONTRIBUTING.md).

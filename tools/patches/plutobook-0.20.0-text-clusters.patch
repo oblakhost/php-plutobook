@@ -1,0 +1,122 @@
+--- source/graphics/textshape.cpp
++++ source/graphics/textshape.cpp
+@@ -14,8 +14,10 @@
+ #include "textbreakiterator.h"
+ 
+ #include <algorithm>
++#include <string>
+ 
+ #include <unicode/uchar.h>
++#include <unicode/utf8.h>
+ #include <unicode/uscript.h>
+ #include <hb-cplusplus.hh>
+ #include <cairo-ft.h>
+@@ -470,6 +472,52 @@
+     return width;
+ }
+ 
++// The characters that a run of glyphs sharing one HarfBuzz cluster stands for.
++struct GlyphCluster {
++    uint32_t startOffset;
++    uint32_t endOffset;
++    int numGlyphs;
++};
++
++// HarfBuzz keeps cluster values monotonic: ascending in a left-to-right run and descending in a
++// right-to-left one. A cluster ends where the next one in text order starts.
++static uint32_t clusterEndIndex(const TextShapeRun& run, uint32_t glyphIndex, Direction direction)
++{
++    const auto& glyphs = run.glyphs();
++    const auto characterIndex = glyphs[glyphIndex].characterIndex;
++    if(direction == Direction::Ltr) {
++        for(auto index = glyphIndex + 1; index < glyphs.size(); ++index) {
++            if(glyphs[index].characterIndex > characterIndex) {
++                return glyphs[index].characterIndex;
++            }
++        }
++    } else {
++        for(auto index = glyphIndex; index > 0; --index) {
++            if(glyphs[index - 1].characterIndex > characterIndex) {
++                return glyphs[index - 1].characterIndex;
++            }
++        }
++    }
++
++    return run.length();
++}
++
++// Cairo fails the whole context on text that is not valid UTF-8, and before 1.18 on Unicode
++// noncharacters too, so those become U+FFFD here.
++static void appendClusterText(std::string& output, const UString& text, uint32_t startOffset, uint32_t endOffset)
++{
++    while(startOffset < endOffset) {
++        uint32_t character;
++        U16_NEXT(text, startOffset, endOffset, character);
++        if(character == 0 || U_IS_SURROGATE(character) || U_IS_UNICODE_NONCHAR(character))
++            character = 0xFFFD;
++        char buffer[U8_MAX_LENGTH];
++        int length = 0;
++        U8_APPEND_UNSAFE(buffer, length, character);
++        output.append(buffer, length);
++    }
++}
++
+ float TextShapeView::draw(GraphicsContext& context, const Point& origin, float expansion, bool stroke) const
+ {
+     if(m_startOffset == m_endOffset)
+@@ -478,10 +526,19 @@
+     auto direction = m_shape->direction();
+     auto offset = origin;
+     const auto& text = m_shape->text();
++
++    // Glyph indices alone leave a PDF without the text of any glyph that the font's character
++    // map does not reach, such as ligatures, tabular figures and localized forms. Surfaces that
++    // record text take the characters of each cluster along with its glyphs.
++    const bool showText = !stroke && cairo_surface_has_show_text_glyphs(cairo_get_target(canvas));
++    std::vector<GlyphCluster> glyphClusters;
++    std::vector<cairo_text_cluster_t> textClusters;
++    std::string utf8;
+     for(const auto& run : m_shape->runs()) {
+         const auto& glyphs = run->glyphs();
+         auto glyphBuffer = cairo_glyph_allocate(glyphs.size());
+         uint32_t numGlyphs = 0;
++        glyphClusters.clear();
+         for(uint32_t glyphIndex = 0; glyphIndex < glyphs.size(); ++glyphIndex) {
+             const auto& glyph = glyphs[glyphIndex];
+             auto characterIndex = glyph.characterIndex + run->offset();
+@@ -498,6 +555,14 @@
+                     glyphBuffer[numGlyphs].x = offset.x + glyph.xOffset;
+                     glyphBuffer[numGlyphs].y = offset.y + glyph.yOffset;
+                     numGlyphs++;
++
++                    // A cluster keeps all of its characters, even past the end of this view:
++                    // the glyphs drawn here are the only ones that will ever stand for them.
++                    if(showText) {
++                        if(glyphClusters.empty() || glyphClusters.back().startOffset != characterIndex)
++                            glyphClusters.push_back({characterIndex, run->offset() + clusterEndIndex(*run, glyphIndex, direction), 0});
++                        glyphClusters.back().numGlyphs++;
++                    }
+                 }
+ 
+                 offset.x += glyph.advance;
+@@ -511,6 +576,20 @@
+         if(stroke) {
+             cairo_glyph_path(canvas, glyphBuffer, numGlyphs);
+             cairo_stroke(canvas);
++        } else if(showText) {
++            // Cairo takes the text and its clusters in text order. The glyphs of a right-to-left
++            // run are in visual order, so its clusters map to them from the end backwards.
++            utf8.clear();
++            textClusters.clear();
++            for(size_t index = 0; index < glyphClusters.size(); ++index) {
++                const auto& cluster = glyphClusters[direction == Direction::Ltr ? index : glyphClusters.size() - index - 1];
++                const auto length = utf8.size();
++                appendClusterText(utf8, text, cluster.startOffset, cluster.endOffset);
++                textClusters.push_back({static_cast<int>(utf8.size() - length), cluster.numGlyphs});
++            }
++
++            const auto flags = direction == Direction::Ltr ? static_cast<cairo_text_cluster_flags_t>(0) : CAIRO_TEXT_CLUSTER_FLAG_BACKWARD;
++            cairo_show_text_glyphs(canvas, utf8.data(), utf8.size(), glyphBuffer, numGlyphs, textClusters.data(), textClusters.size(), flags);
+         } else {
+             cairo_show_glyphs(canvas, glyphBuffer, numGlyphs);
+         }
