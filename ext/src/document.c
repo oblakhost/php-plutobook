@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "binding.h"
 #include "Zend/zend_exceptions.h"
-#include "Zend/zend_smart_str.h"
 #include "ext/spl/spl_exceptions.h"
 #include "ext/standard/info.h"
 #include "main/fopen_wrappers.h"
@@ -324,7 +323,9 @@ PHP_METHOD(PlutoBook_Document, loadHtml)
 typedef struct {
 	php_stream *stream;
 	zend_resource *borrowed;
-	smart_str bytes;
+	// The PDF for toPdf(). capacity counts the bytes allocated, the string's length those written.
+	zend_string *bytes;
+	size_t capacity;
 	const char *failure;
 	bool failed;
 	bool bailed;
@@ -349,6 +350,33 @@ static void php_plutobook_write_stream(php_plutobook_output *out, const char *da
 	}
 }
 
+// PHP's smart_str would do this, but its inline helpers call smart_str_ferealloc(), which PHP
+// exports only since 8.2.35, 8.3.36, 8.4.27 and 8.5.12. A module compiled against newer
+// headers would then fail to load on every older patch release. Grows by whole pages, as
+// smart_str does.
+static void php_plutobook_append_bytes(php_plutobook_output *out, const char *data, size_t length)
+{
+	size_t used = out->bytes ? ZSTR_LEN(out->bytes) : 0;
+	if (!out->bytes || length > out->capacity - used) {
+		size_t capacity = zend_safe_address_guarded(1, length, used) | 4095;
+		out->bytes = out->bytes ? zend_string_realloc(out->bytes, capacity, false)
+		                        : zend_string_alloc(capacity, false);
+		// PHP's allocator bails out instead of returning NULL.
+		ZEND_ASSERT(out->bytes);
+		out->capacity = capacity;
+	}
+	memcpy(ZSTR_VAL(out->bytes) + used, data, length);
+	ZSTR_LEN(out->bytes) = used + length;
+}
+
+static void php_plutobook_free_bytes(php_plutobook_output *out)
+{
+	if (out->bytes) {
+		zend_string_release_ex(out->bytes, false);
+		out->bytes = NULL;
+	}
+}
+
 static plutobook_stream_status_t php_plutobook_write(void *closure, const char *data,
                                                      unsigned int length)
 {
@@ -363,7 +391,7 @@ static plutobook_stream_status_t php_plutobook_write(void *closure, const char *
 		if (out->stream) {
 			php_plutobook_write_stream(out, data, length);
 		} else {
-			smart_str_appendl(&out->bytes, data, length);
+			php_plutobook_append_bytes(out, data, length);
 		}
 	}
 	zend_catch
@@ -411,13 +439,13 @@ static bool php_plutobook_render(php_plutobook_document *doc, php_plutobook_outp
 	}
 	doc->busy = false;
 	if (out->bailed || doc->bailed) {
-		smart_str_free(&out->bytes);
+		php_plutobook_free_bytes(out);
 		zend_bailout();
 	}
 	// Raise the time limit error now, while shutdown functions can still run, instead of
 	// letting PHP's hard timeout kill the process after a long uninterruptible render.
 	if (php_plutobook_timed_out()) {
-		smart_str_free(&out->bytes);
+		php_plutobook_free_bytes(out);
 		php_plutobook_raise_timeout();
 	}
 	// PlutoBook 0.20.0 can return true after Cairo reports a callback error.
@@ -435,10 +463,14 @@ PHP_METHOD(PlutoBook_Document, toPdf)
 	php_plutobook_document *doc = php_plutobook_document_from(Z_OBJ_P(ZEND_THIS));
 	php_plutobook_output out = {0};
 	if (!php_plutobook_ready(doc, true) || !php_plutobook_render(doc, &out)) {
-		smart_str_free(&out.bytes);
+		php_plutobook_free_bytes(&out);
 		RETURN_THROWS();
 	}
-	RETURN_STR(smart_str_extract(&out.bytes));
+	if (!out.bytes) {
+		RETURN_EMPTY_STRING();
+	}
+	ZSTR_VAL(out.bytes)[ZSTR_LEN(out.bytes)] = '\0';
+	RETURN_STR(zend_string_truncate(out.bytes, ZSTR_LEN(out.bytes), false));
 }
 
 PHP_METHOD(PlutoBook_Document, writeToStream)
