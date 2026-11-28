@@ -1,0 +1,30 @@
+#!/bin/sh
+# Runs in an official PHP image (scripts/test-patch-releases) with a portable module at
+# /module/plutobook.so. Checks that this exact PHP release loads it and renders a PDF.
+set -eu
+release=$1
+# The image has no fonts or Fontconfig files. An empty configuration keeps Fontconfig quiet.
+printf '%s\n' '<fontconfig><cachedir>/tmp/fontconfig</cachedir></fontconfig>' > /tmp/fonts.conf
+export FONTCONFIG_FILE=/tmp/fonts.conf
+cat > /tmp/render.php <<'PHP'
+<?php
+if (!extension_loaded('plutobook')) {
+    echo "plutobook did not load\n";
+    exit(1);
+}
+$doc = new PlutoBook\Document();
+$doc->loadHtml('<h1>Patch release test</h1>');
+$pdf = $doc->toPdf();
+if (!str_starts_with($pdf, '%PDF-') || !str_contains($pdf, '%%EOF')) {
+    echo "toPdf() did not return a PDF\n";
+    exit(1);
+}
+printf("PHP %s, %s, %d byte PDF\n", PHP_VERSION, (new ReflectionExtension('plutobook'))->getVersion(), strlen($pdf));
+PHP
+# A module PHP cannot load is only a startup warning, so every line of output counts.
+out=$(php -n -d extension=/module/plutobook.so /tmp/render.php 2>&1) || { echo "$out"; exit 1; }
+echo "$out"
+case $out in
+  "PHP $release, "*" byte PDF") ;;
+  *) echo "expected a single line starting with PHP $release"; exit 1 ;;
+esac

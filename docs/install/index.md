@@ -11,8 +11,12 @@ and rpm packages if you'd rather use your system's package manager.
 
 ## Pick your platform
 
-Every platform supports PHP 8.2 to 8.6. Linux builds cover x86_64 and arm64
+Every platform supports PHP 8.2 to 8.6, in any patch release: the build for PHP 8.3
+loads on 8.3.0 as well as on the newest 8.3. Linux builds cover x86_64 and arm64
 (aarch64), and Windows builds cover x64.
+
+Releases up to 1.2.0 need at least PHP 8.2.35, 8.3.36, 8.4.27 or 8.5.12; see
+[Troubleshooting](troubleshooting.md#undefined-symbol-smart_str_ferealloc).
 
 | Platform | Versions | PHP from | Use |
 | --- | --- | --- | --- |

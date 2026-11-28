@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "binding.h"
-#include "Zend/zend_smart_str.h"
 #include "ext/standard/url.h"
 #include "main/fopen_wrappers.h"
 #include <errno.h>
@@ -263,14 +262,20 @@ zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base)
 		zend_argument_value_error(2, "must be a directory inside documentRoot");
 		return NULL;
 	}
-	smart_str url = {0};
-	smart_str_appends(&url, "file:///");
+	// Encoding turns a byte into at most three, and each segment gains a slash. Built by hand
+	// because PHP's inline smart_str helpers need a newer patch release than the module supports.
+	static const char scheme[] = "file:///";
+	zend_string *url = zend_string_safe_alloc(4, strlen(relative), sizeof(scheme) - 1, false);
+	char *end = ZSTR_VAL(url);
+	memcpy(end, scheme, sizeof(scheme) - 1);
+	end += sizeof(scheme) - 1;
 	while (*relative) {
 		size_t length = strcspn(relative, "/");
 		if (length) {
 			zend_string *segment = php_raw_url_encode(relative, length);
-			smart_str_append(&url, segment);
-			smart_str_appendc(&url, '/');
+			memcpy(end, ZSTR_VAL(segment), ZSTR_LEN(segment));
+			end += ZSTR_LEN(segment);
+			*end++ = '/';
 			zend_string_release(segment);
 		}
 		relative += length;
@@ -279,7 +284,8 @@ zend_string *php_plutobook_virtual_base(zend_string *root, zend_string *base)
 		}
 	}
 	zend_string_release(resolved);
-	return smart_str_extract(&url);
+	*end = '\0';
+	return zend_string_truncate(url, (size_t)(end - ZSTR_VAL(url)), false);
 }
 
 static php_plutobook_asset_status php_plutobook_scheme(const char *url)

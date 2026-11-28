@@ -9,6 +9,13 @@ GitHub allows 60 anonymous API requests an hour per IP address, and each PIE
 install uses about two. On a shared address or in CI, give PIE a token; see
 [Any platform: PIE](index.md#any-platform-pie).
 
+## `undefined symbol: smart_str_ferealloc`
+
+PHP prints this warning at startup and runs without the extension. Releases up to
+1.2.0 load only on PHP 8.2.35, 8.3.36, 8.4.27, 8.5.12 or newer, and on any 8.6.
+Update the extension: later releases load on every patch release of PHP 8.2 to
+8.6. Updating PHP to its newest patch release works too.
+
 ## PHP-FPM doesn't see the extension
 
 Restart PHP-FPM after installing. The CLI and FPM can read different `php.ini`

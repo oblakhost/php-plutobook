@@ -14,6 +14,11 @@
   on initialization failure, callback failure and destruction. Use explicit
   byte lengths for PDFs, handle short writes and preserve stream exceptions.
   Route asset access through the binding's loading policy and PHP restrictions.
+- Release binaries are compiled against the newest patch release of each PHP
+  branch and must load on its oldest. Keep to functions every patch release
+  exports, and avoid PHP's inline `smart_str` helpers: since PHP 8.2.35, 8.3.36,
+  8.4.27 and 8.5.12 they call `smart_str_ferealloc()`, which older patch releases
+  lack. `scripts/test-patch-releases` checks the portable modules.
 - EditorConfig specifies LF, UTF-8, final newlines, tabs for C and Makefiles,
   and four spaces for PHP. PHPT expectations preserve trailing whitespace.
   Use clang-format and clang-tidy on maintained C sources, and PHPCS (PSR-12)
@@ -219,6 +224,13 @@ separate from the ones gd, imagick or intl load. It needs only glibc, the GCC 8
 that, together with symbol versions, full RELRO, a non-executable stack and the
 absence of run paths.
 
+`scripts/test-patch-releases` loads each `linux` module into the official PHP
+images of the oldest patch release of its branch, the last one before
+`smart_str_ferealloc()` and the pinned newest one, and renders a page in each.
+Full RELRO makes PHP resolve every symbol at load time, so a module that needs
+anything an older patch release lacks fails there. It needs network access for
+the images.
+
 ### deb and rpm packages
 
 `scripts/build-packages` wraps the portable modules with nFPM, one package per PHP
@@ -264,7 +276,7 @@ A successful push to master then calls the reusable release workflow
 1. **version** runs semantic-release as a dry run. `scripts/release-version.mjs`
    writes the next version to the job outputs. No version, no release.
 2. **linux** (`.github/workflows/portable.yml`) runs `scripts/build-portable`,
-   `scripts/build-packages` and `scripts/test-packages` with
+   `scripts/test-patch-releases`, `scripts/build-packages` and `scripts/test-packages` with
    `PLUTOBOOK_RELEASE_VERSION` set to that version, natively on x86_64
    (`ubuntu-24.04`) and aarch64 (`ubuntu-24.04-arm`), and uploads the PIE archives,
    the MPL sources and the packages. Pull requests that touch the build run the same

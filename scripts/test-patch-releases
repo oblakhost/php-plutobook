@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Load each portable module into the oldest and the newest patch release of its PHP branch
+# and render a page there, in the official PHP images.
+# Usage: scripts/test-patch-releases [MINOR...]     (default: every branch below)
+#
+# The modules are compiled against the newest patch release's headers. A module must not
+# need anything from PHP that an older patch release lacks: PHP's inline smart_str helpers
+# started calling smart_str_ferealloc(), which PHP exports only since 8.2.35, 8.3.36,
+# 8.4.27 and 8.5.12, and releases up to 1.2.0 failed to load on every release before
+# those. The modules bind all their symbols when PHP loads them, so loading proves that
+# none is missing. CONTAINER_ENGINE picks podman or docker. Logs go to
+# build/portable/patch-release-tests/.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+modules="$root/build/portable/dist/linux"
+logs="$root/build/portable/patch-release-tests"
+engine=${CONTAINER_ENGINE:-$(command -v podman || command -v docker)}
+
+# branch | image tag suffix | oldest release | last release before smart_str_ferealloc()
+# The newest release of each branch is the one pinned in tools/sources.sha256. PHP 8.4.0
+# was never released. The plain 8.6 images are thread-safe builds.
+branches=(
+  "8.2|cli|8.2.0|8.2.34"
+  "8.3|cli|8.3.0|8.3.35"
+  "8.4|cli|8.4.1|8.4.26"
+  "8.5|cli|8.5.0|8.5.11"
+  "8.6|nts|8.6.0|"
+)
+pinned=$(sed -nE 's|.*/php-([0-9.]+)\.tar\.xz$|\1|p' "$root/tools/sources.sha256")
+
+selected=("$@")
+mkdir -p "$logs"
+failed=0
+for branch in "${branches[@]}"; do
+  IFS='|' read -r minor suffix oldest before <<<"$branch"
+  if ((${#selected[@]})) && [[ " ${selected[*]} " != *" $minor "* ]]; then continue; fi
+  module="$modules/php$minor/plutobook.so"
+  newest=$(grep -E "^${minor//./\\.}\.[0-9]+$" <<<"$pinned" || true)
+  if [[ ! -f $module || -z $newest ]]; then
+    echo "php$minor: expected $module and a pinned PHP $minor release" >&2
+    failed=1
+    continue
+  fi
+  for release in $(printf '%s\n' "$oldest" $before "$newest" | sort -uV); do
+    printf '%-26s ' "php$minor module, PHP $release"
+    if "$engine" run --rm --quiet --security-opt label=disable -v "$module:/module/plutobook.so:ro" \
+        -v "$root/tools/packages:/tools:ro" "docker.io/library/php:$release-$suffix" \
+        sh /tools/check-patch-release "$release" > "$logs/php$minor-$release.log" 2>&1; then
+      tr '\n' ' ' < "$logs/php$minor-$release.log"
+      echo
+    else
+      echo "FAILED (build/portable/patch-release-tests/php$minor-$release.log)"
+      sed 's/^/    /' "$logs/php$minor-$release.log" | tail -15
+      failed=1
+    fi
+  done
+done
+exit "$failed"
